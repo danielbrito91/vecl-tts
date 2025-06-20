@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+.DS_Store
+# Virtual environments
+.venv
+
+data
+notebooks/*
+models
+outputs
+speaker_encoder_model
+wandb
+.ruff_cache
+checkpoints
