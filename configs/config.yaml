@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - paths: default
+  - audio: default
+  - training: default
+  - s3: default
+  - wandb: default
+  - model: vecl # Default model for training
+  - _self_ 

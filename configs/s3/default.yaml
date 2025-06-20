@@ -1,0 +1,4 @@
+bucket_name: ${oc.env:S3_BUCKET_NAME}
+checkpoint_prefix_yourtts: "tts/yourtts/yourtts-multilingual-checkpoints-finetuned"
+checkpoint_prefix_vecl: "tts/vecl/vecl-multilingual-checkpoints-finetuned"
+cml_tts_checkpoint_key: "tts/cml-tts/checkpoints_yourtts_cml_tts_dataset.tar.bz" 

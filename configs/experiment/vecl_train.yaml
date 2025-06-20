@@ -1,6 +1,0 @@
-# VECL Training Experiment
-# This file can be used to override any settings from the main.yaml for this specific experiment.
-
-model:
-  type: 'vecl'
-  use_emotion_consistency_loss: true 
