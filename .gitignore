@@ -18,3 +18,4 @@ speaker_encoder_model
 wandb
 .ruff_cache
 checkpoints
+.env

@@ -1,0 +1,6 @@
+# YourTTS Finetuning Experiment
+# This file overrides the default settings for a YourTTS finetuning run.
+
+model:
+  type: 'yourtts'
+  use_emotion_consistency_loss: false # YourTTS does not use this 

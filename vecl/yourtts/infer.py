@@ -3,7 +3,6 @@ import os
 import numpy as np
 import soundfile as sf
 import torch
-from tqdm import tqdm
 from TTS.config import load_config
 from TTS.tts.models import setup_model
 from TTS.tts.utils.languages import LanguageManager
@@ -17,14 +16,176 @@ SE_CHECKPOINT_FILEPATH = (
 SE_CONFIG_FILEPATH = (
     'models/checkpoints_yourtts_cml_tts_dataset/config_se.json'
 )
-FINETUNE_CHECKPOINT = 'models/finetune/checkpoint_73.pth'
-FINETUNE_CONFIG = 'models/finetune/config_73.json'
+i = '900'
+j = 900
+FINETUNE_CHECKPOINT = f'models/finetune/checkpoint_{j}.pth'
+FINETUNE_CONFIG = f'models/finetune/config_{i}.json'
 
 CML_CHECKPOINT = 'models/checkpoints_yourtts_cml_tts_dataset/best_model.pth'
 CONFIG = 'models/checkpoints_yourtts_cml_tts_dataset/config.json'
 LANGUAGE_EMBEDDINGS = (
     'models/checkpoints_yourtts_cml_tts_dataset/language_ids.json'
 )
+
+
+def load_model_config(
+    checkpoint_filepath,
+    config_filepath,
+    language_embeddings_filepath,
+    use_cuda=True,
+    is_finetune=False,
+) -> tuple:
+    """
+    Load a model from a checkpoint and config file, handling the differences
+    between a pre-trained and a fine-tuned model.
+    """
+    print(f'>>> Loading model from checkpoint. is_finetune: {is_finetune}')
+
+    # Load the config
+    config = load_config(config_filepath)
+
+    # CRITICAL FIX: Ensure audio config matches training
+    if not hasattr(config, 'audio') or config.audio is None:
+        config.audio = type(
+            'AudioConfig',
+            (),
+            {
+                'sample_rate': 24000,
+                'hop_length': 256,
+                'win_length': 1024,
+                'fft_size': 1024,
+                'mel_fmin': 0.0,
+                'mel_fmax': None,
+                'num_mels': 80,
+            },
+        )()
+
+    # Ensure sample rate is correct
+    config.audio.sample_rate = 24000
+
+    # If it's a fine-tuned model, overwrite the absolute paths
+    if is_finetune:
+        config.model_args['speaker_encoder_config_path'] = SE_CONFIG_FILEPATH
+        config.model_args['speaker_encoder_model_path'] = (
+            SE_CHECKPOINT_FILEPATH
+        )
+        config.model_args['language_ids_file'] = LANGUAGE_EMBEDDINGS
+        config.language_ids_file = LANGUAGE_EMBEDDINGS
+
+    # These are set to None for inference
+    config.model_args['d_vector_file'] = None
+    config.model_args['language_ids_file'] = None
+    config.model_args['use_speaker_encoder_as_loss'] = False
+
+    # Setup the model from the config
+    model = setup_model(config)
+
+    # Load the checkpoint
+    cp = torch.load(checkpoint_filepath, map_location=torch.device('cpu'))
+    model_weights = cp['model'].copy()
+
+    # Remove speaker encoder weights
+    for key in list(model_weights.keys()):
+        if 'speaker_encoder' in key:
+            del model_weights[key]
+
+    # Handle language embedding mismatch for fine-tuned models
+    if is_finetune and 'emb_l.weight' in model_weights:
+        # Check if dimensions match
+        pretrained_lang_emb_shape = model_weights['emb_l.weight'].shape
+        current_lang_emb_shape = model.emb_l.weight.shape
+
+        if pretrained_lang_emb_shape != current_lang_emb_shape:
+            print(
+                f' > Language embedding mismatch: {pretrained_lang_emb_shape} vs {current_lang_emb_shape}'
+            )
+            print(
+                ' > Not loading language embeddings from fine-tuned checkpoint.'
+            )
+            del model_weights['emb_l.weight']
+
+    # Patch the state dict for compatibility
+    patched_model_weights = patch_state_dict(model_weights)
+
+    # Load the patched weights
+    load_result = model.load_state_dict(patched_model_weights, strict=False)
+    if load_result.missing_keys:
+        print(' > ⚠️ Missing keys:', load_result.missing_keys)
+    if load_result.unexpected_keys:
+        print(' > ⚠️ Unexpected keys:', load_result.unexpected_keys)
+
+    # Set up the language manager
+    model.language_manager = LanguageManager(language_embeddings_filepath)
+    model.eval()
+
+    if use_cuda:
+        model = model.cuda()
+
+    return model, config
+
+
+def synthesize_waveform(
+    model,
+    config,
+    sentence,
+    reference_emb,
+    speed=1.0,
+    use_cuda=True,
+    language_name='pt-br',
+    use_griffin_lim=False,
+) -> np.array:
+    """
+    Run inference on the model with proper settings.
+    """
+
+    # Use settings that match the original model's training
+    model.length_scale = 2 - speed  # Match original (was 2.0 - speed)
+    model.inference_noise_scale = 0.3  # Match original (was 0.333)
+    model.inference_noise_scale_dp = 0.3  # Match original (was 0.333)
+
+    # Verify language exists
+    if language_name not in model.language_manager.name_to_id:
+        available_langs = list(model.language_manager.name_to_id.keys())
+        raise ValueError(
+            f"Language '{language_name}' not found. Available: {available_langs}"
+        )
+
+    language_id = model.language_manager.name_to_id[language_name]
+    print(language_id)
+
+    waveform, alignment, _, _ = synthesis(
+        model=model,
+        text=sentence,
+        CONFIG=config,
+        use_cuda=use_cuda,
+        speaker_id=None,
+        style_wav=None,
+        style_text=None,
+        use_griffin_lim=use_griffin_lim,
+        d_vector=reference_emb,
+        language_id=language_id,
+    ).values()
+
+    return waveform
+
+
+# Updated save function with correct sample rate
+def save_file(
+    filename, audio, output_type='wav', sampling_rate=24000
+) -> None:  # Changed to 24000
+    """
+    Save wav or ogg output file with correct sample rate
+    """
+    if output_type == 'wav':
+        sf.write(filename + '.wav', audio, sampling_rate, 'PCM_16')
+    else:
+        sf.write(
+            filename + '.ogg',
+            audio,
+            sampling_rate,
+            format='ogg',
+            subtype='vorbis',
+        )
 
 
 def patch_state_dict(state_dict):
@@ -52,204 +213,11 @@ def patch_state_dict(state_dict):
     return new_state_dict
 
 
-def load_model_config(
-    checkpoint_filepath,
-    config_filepath,
-    language_embeddings_filepath,
-    use_cuda=True,
-    is_finetune=False,
-) -> tuple:
-    """
-    Load a model from a checkpoint and config file, handling the differences
-    between a pre-trained and a fine-tuned model.
-    """
-    print(f'>>> Loading model from checkpoint. is_finetune: {is_finetune}')
-
-    # Load the config
-    config = load_config(config_filepath)
-
-    # If it's a fine-tuned model, overwrite the absolute paths from the training
-    # environment with the correct local paths for inference.
-    if is_finetune:
-        config.model_args['speaker_encoder_config_path'] = SE_CONFIG_FILEPATH
-        config.model_args['speaker_encoder_model_path'] = (
-            SE_CHECKPOINT_FILEPATH
-        )
-        config.model_args['language_ids_file'] = LANGUAGE_EMBEDDINGS
-        config.language_ids_file = LANGUAGE_EMBEDDINGS
-
-    # These are set to None for inference, as we use an external speaker encoder
-    # and provide the d_vector manually.
-    config.model_args['d_vector_file'] = None
-    config.model_args['language_ids_file'] = None
-    config.model_args['use_speaker_encoder_as_loss'] = False
-
-    # Setup the model from the config
-    model = setup_model(config)
-
-    # Load the checkpoint
-    cp = torch.load(checkpoint_filepath, map_location=torch.device('cpu'))
-    model_weights = cp['model'].copy()
-
-    # The speaker encoder is not part of the TTS model checkpoint, so we remove it.
-    for key in list(model_weights.keys()):
-        if 'speaker_encoder' in key:
-            del model_weights[key]
-
-    # For a fine-tuned model, we must handle the language embedding mismatch.
-    # In infer.py, inside load_model_config, when is_finetune is True
-    if 'emb_l.weight' in model_weights:
-        print(
-            f'  > Shape of emb_l.weight in checkpoint: {model_weights["emb_l.weight"].shape}'
-        )
-        print(
-            f'  > Shape of model.emb_l.weight after setup_model: {model.emb_l.weight.shape}'
-        )
-        if model_weights['emb_l.weight'].shape != model.emb_l.weight.shape:
-            print(
-                ' > Language embedding layer mismatch DETECTED. Deleting from checkpoint weights.'
-            )  # Critical log
-            del model_weights['emb_l.weight']
-        else:
-            print(
-                ' > Language embedding layer shapes MATCH. Proceeding to load.'
-            )
-    else:
-        print(
-            ' > emb_l.weight NOT FOUND in fine-tuned checkpoint model_weights.'
-        )
-
-    # After model.load_state_dict:
-
-    # Patch the state dict for compatibility with newer TTS versions.
-    patched_model_weights = patch_state_dict(model_weights)
-
-    # Load the patched weights into the model.
-    load_result = model.load_state_dict(patched_model_weights, strict=False)
-    print(f'  > Load result - Missing keys: {load_result.missing_keys}')
-    print(f'  > Load result - Unexpected keys: {load_result.unexpected_keys}')
-    if load_result.missing_keys:
-        print(
-            ' > ⚠️ Missing keys in state_dict loading:',
-            load_result.missing_keys,
-        )
-    if load_result.unexpected_keys:
-        print(
-            ' > ⚠️ Unexpected keys in state_dict loading:',
-            load_result.unexpected_keys,
-        )
-
-    # Set up the language manager and put the model in eval mode.
-    model.language_manager = LanguageManager(language_embeddings_filepath)
-    model.eval()
-
-    if use_cuda:
-        model = model.cuda()
-
-    return model, config
-
-
 def extract_reference_embedding(se_speaker_manager, wav_filepath, use_cuda):
     reference_emb = se_speaker_manager.compute_embedding_from_clip(
         wav_filepath
     )
     return reference_emb
-
-
-def synthesize_waveform(
-    model,
-    config,
-    sentence,
-    reference_emb,
-    speed=1.0,
-    use_cuda=True,
-    language_name='pt-br',
-    use_griffin_lim=False,
-) -> np.array:
-    """
-    Run inference on the model.
-    """
-
-    model.length_scale = (
-        2.0 - speed
-    )  # scaler for the duration predictor. The larger it is, the slower the speech.
-    model.inference_noise_scale = 0.333  # defines the noise variance applied to the random z vector at inference.
-    model.inference_noise_scale_dp = 0.333  # defines the noise variance applied to the duration predictor z vector at inference.
-
-    language_id = model.language_manager.name_to_id[language_name]
-    waveform, alignment, _, _ = synthesis(
-        model=model,
-        text=sentence,
-        CONFIG=config,
-        use_cuda=use_cuda,
-        speaker_id=None,
-        style_wav=None,
-        style_text=None,
-        use_griffin_lim=use_griffin_lim,
-        d_vector=reference_emb,
-        language_id=language_id,
-    ).values()
-    return waveform
-
-
-def save_file(filename, audio, output_type='wav', sampling_rate=24000) -> None:
-    """
-    Save wav or ogg output file
-    Args:
-        filename: filename without extension (.wav or .ogg)
-        audio: numpy data referent to waveform
-        output_type: wav or ogg
-        sampling_rate: examples 22050, 44100
-
-    Returns: None
-    """
-    if output_type == 'wav':
-        sf.write(filename + '.wav', audio, sampling_rate, 'PCM_16')
-    else:
-        # A bug occurred in the soundfile lib: cuts the end of the ogg file.
-        sf.write(
-            filename + '.ogg',
-            audio,
-            sampling_rate,
-            format='ogg',
-            subtype='vorbis',
-        )
-
-
-def generate_wavfile(
-    model,
-    config,
-    se_speaker_manager,
-    sentences,
-    ref_wav_filepath,
-    speed=1.0,
-    output_folder='output_inference',
-    sr=24000,
-    audio_format='wav',
-    use_cuda=True,
-    language_name='pt-br',
-) -> None:
-    """
-    Run inference on the model and save a wav file
-    """
-
-    reference_emb = extract_reference_embedding(
-        se_speaker_manager, ref_wav_filepath, use_cuda
-    )
-
-    for index, sentence in enumerate(tqdm(sentences)):
-        waveform = synthesize_waveform(
-            model,
-            config,
-            sentence,
-            reference_emb,
-            speed,
-            use_cuda,
-            language_name,
-        )
-        filename = f'output-{index}'
-        filepath = os.path.join(output_folder, filename)
-        save_file(filepath, waveform, audio_format, sr)
 
 
 def generate(
@@ -298,41 +266,3 @@ def generate(
     )
 
     save_file(output_file_path, waveform, 'wav', sampling_rate=24000)
-
-
-if __name__ == '__main__':
-    REFERENCE_WAV = 'data/draft/ptbr/art001a.wav'
-    OUTPUT_FOLDER = 'outputs'
-    SAMPLE_RATE = 24000
-    LANGUAGE = 'pt-br'
-
-    se_speaker_manager = SpeakerManager(
-        encoder_model_path=SE_CHECKPOINT_FILEPATH,
-        encoder_config_path=SE_CONFIG_FILEPATH,
-        use_cuda=USE_CUDA,
-    )
-
-    model, config = load_model_config(
-        CML_CHECKPOINT, CONFIG, LANGUAGE_EMBEDDINGS, USE_CUDA
-    )
-
-    speed = 1.0
-    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-
-    sentences = [
-        'Título um. dos princípios fundamentais da filosofia.',
-    ]
-
-    generate_wavfile(
-        model,
-        config,
-        se_speaker_manager,
-        sentences,
-        REFERENCE_WAV,
-        speed,
-        OUTPUT_FOLDER,
-        SAMPLE_RATE,
-        'wav',
-        USE_CUDA,
-        LANGUAGE,
-    )
