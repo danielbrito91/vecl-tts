@@ -1,0 +1,2 @@
+project_name: "vecl-finetuned"
+entity: ${oc.env:WANDB_ENTITY} 

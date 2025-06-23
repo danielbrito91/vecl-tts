@@ -5,7 +5,6 @@ import torch
 from tqdm import tqdm
 from TTS.tts.datasets import load_tts_samples
 from TTS.tts.models.vits import VitsDataset, load_audio
-
 from vecl.vecl.emotion_embedding import EmotionEmbedding
 
 # -----------------------------------------------------------------------------

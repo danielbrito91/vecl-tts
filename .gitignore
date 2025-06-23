@@ -15,7 +15,7 @@ notebooks/*
 models
 outputs
 speaker_encoder_model
-wandb
+wandb/*
 .ruff_cache
 checkpoints
 .env

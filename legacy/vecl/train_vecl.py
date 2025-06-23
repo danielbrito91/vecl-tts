@@ -5,15 +5,19 @@ import pandas as pd
 import torch
 from trainer import TrainerArgs
 from TTS.tts.datasets import load_tts_samples
-from TTS.tts.models.vits import Vits
-
-from vecl.utils.downloader import download_from_s3, extract_tar_file
+from vecl.vecl.dataset import (
+    add_relative_path_to_samples,
+    compute_emotion_embeddings,
+)
+from vecl.vecl.vecl import Vecl
 from vecl.yourtts.config_loader import load_config
 from vecl.yourtts.dataset import (
     compute_speaker_embeddings,
     prepare_dataset_configs,
 )
 from vecl.yourtts.s3_trainer import S3Trainer
+
+from vecl.utils.downloader import download_from_s3, extract_tar_file
 
 # =================================================================================================
 # 1. Configuration Settings
@@ -25,6 +29,7 @@ OUTPUT_PATH = '/mnt/sagemaker-nvme/tts-checkpoints-multilingual'
 DATASET_PATH = Path('/mnt/sagemaker-nvme/tts-dataset')  # Path('data')
 METADATA_FILE = 'metadata.csv'
 EMBEDDINGS_FILE = DATASET_PATH / 'speakers.pth'
+EMOTION_EMBEDDINGS_FILE = DATASET_PATH / 'emotions.pth'
 
 # --- Training Hyperparameters ---
 BATCH_SIZE = 12
@@ -43,7 +48,7 @@ SPEAKER_ENCODER_MODEL_DIR = Path(OUTPUT_PATH) / 'speaker_encoder'
 
 # --- S3 Configuration for Checkpoint Uploads ---
 S3_BUCKET_NAME = 'hotmart-datascience-sagemaker'
-S3_CHECKPOINT_PREFIX = 'tts/yourtts/yourtts-multilingual-checkpoints-finetuned'
+S3_CHECKPOINT_PREFIX = 'tts/vecl/vecl-multilingual-checkpoints-finetuned'
 S3_CML_TTS_CHECKPOINT_KEY = (
     'tts/cml-tts/checkpoints_yourtts_cml_tts_dataset.tar.bz'
 )
@@ -62,12 +67,13 @@ SKIP_TRAIN_EPOCH = False
 
 # --- W&B Logging ---
 USE_WANDB = True
-WANDB_PROJECT = 'yourtts-finetuned'
+WANDB_PROJECT = 'vecl-finetuned'
 WANDB_ENTITY = 'danielbrito'
 WANDB_RUN_NAME = (
-    f'yourtts-finetuned-run-{pd.Timestamp.now().strftime("%Y%m%d-%H%M%S")}'
+    f'vecl-finetuned-run-{pd.Timestamp.now().strftime("%Y%m%d-%H%M%S")}'
 )
 USE_PRETRAINED_LANG_EMBEDDINGS = True
+USE_EMOTION_CONSISTENCY_LOSS = True
 
 
 def patch_state_dict(state_dict):
@@ -151,6 +157,8 @@ if __name__ == '__main__':
     compute_speaker_embeddings(
         dataset_configs, EMBEDDINGS_FILE, SPEAKER_ENCODER_MODEL_DIR
     )
+    if USE_EMOTION_CONSISTENCY_LOSS:
+        compute_emotion_embeddings(dataset_configs, EMOTION_EMBEDDINGS_FILE)
 
     # --- Model Configuration ---
     config = load_config(
@@ -160,6 +168,9 @@ if __name__ == '__main__':
         output_path=OUTPUT_PATH,
         dataset_configs=dataset_configs,
         embeddings_file=EMBEDDINGS_FILE,
+        emotion_embeddings_file=str(EMOTION_EMBEDDINGS_FILE)
+        if USE_EMOTION_CONSISTENCY_LOSS
+        else None,
         # Training params
         batch_size=BATCH_SIZE,
         eval_batch_size=EVAL_BATCH_SIZE,
@@ -177,6 +188,7 @@ if __name__ == '__main__':
         wandb_run_name=WANDB_RUN_NAME,
         wandb_entity=WANDB_ENTITY,
         use_original_lang_ids=USE_PRETRAINED_LANG_EMBEDDINGS,
+        use_emotion_consistency_loss=USE_EMOTION_CONSISTENCY_LOSS,
     )
 
     # --- Initialization and Training ---
@@ -188,8 +200,12 @@ if __name__ == '__main__':
         eval_split_size=config.eval_split_size,
     )
 
+    if USE_EMOTION_CONSISTENCY_LOSS:
+        train_samples = add_relative_path_to_samples(train_samples)
+        eval_samples = add_relative_path_to_samples(eval_samples)
+
     # Use the custom Vits class that has the fix
-    model = Vits.init_from_config(config)
+    model = Vecl.init_from_config(config)
 
     print('\n>>> Manually loading and patching checkpoint...')
     checkpoint = torch.load(RESTORE_PATH, map_location='cpu')

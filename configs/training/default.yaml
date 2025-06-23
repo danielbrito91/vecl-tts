@@ -16,6 +16,6 @@ use_precomputed_embeddings: true
 use_speaker_embedding: true
 use_emotion_embedding: true
 use_d_vector_file: true
-d_vector_file: ["${paths.speaker_embeddings_file}"]
+d_vector_file: null  # Will be set automatically from paths.speaker_embeddings_file
 use_multi_lingual: true
 use_pretrained_lang_embeddings: true 

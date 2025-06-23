@@ -4,6 +4,7 @@ import tarfile
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import NoCredentialsError
 from tqdm import tqdm
 
 
@@ -64,6 +65,39 @@ def extract_tar_file(tar_path, extract_path='.'):
     except Exception as e:
         print(f'Error extracting {tar_path}: {e}')
         raise
+
+
+def download_s3_file(bucket_name: str, s3_key: str, local_path: Path) -> bool:
+    """
+    Downloads a file from S3 to a local path.
+
+    Args:
+        bucket_name (str): The name of the S3 bucket.
+        s3_key (str): The key (path) of the file in the S3 bucket.
+        local_path (Path): The local path to save the downloaded file.
+
+    Returns:
+        bool: True if download was successful, False otherwise.
+    """
+    if local_path.exists():
+        print(f'✔️ File already exists at {local_path}. Skipping download.')
+        return True
+
+    try:
+        s3 = boto3.client('s3')
+        print(f'⬇️ Downloading {s3_key} from bucket {bucket_name}...')
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        s3.download_file(bucket_name, s3_key, str(local_path))
+        print(f'✅ Download complete. File saved to {local_path}')
+        return True
+    except NoCredentialsError:
+        print(
+            '❌ S3 credentials not found. Please configure your AWS credentials.'
+        )
+        return False
+    except Exception as e:
+        print(f'❌ An error occurred during S3 download: {e}')
+        return False
 
 
 def main():

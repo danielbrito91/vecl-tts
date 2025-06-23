@@ -1,11 +1,12 @@
-output_path: ${oc.env:OUTPUT_PATH}
-dataset_path: ${oc.env:DATASET_PATH}
+# Paths for a minimal, local-only test run.
+output_path: /tmp/vecl-output
+dataset_path: data/processed_24k
 metadata_file: metadata.csv
-speaker_embeddings_file: ${paths.dataset_path}/speakers.pth
+speaker_embeddings_file: ${paths.dataset_path}/speaker_embeddings_patch.pth
 emotion_embeddings_file: ${paths.dataset_path}/emotions.pth
 speaker_encoder_model_dir: ${paths.output_path}/speaker_encoder
-pretrained_checkpoint_dir: ${oc.env:PRETRAINED_CHECKPOINT_DIR}
+pretrained_checkpoint_dir: models
 restore_path: ${paths.pretrained_checkpoint_dir}/checkpoints_yourtts_cml_tts_dataset/best_model.pth
 pretrained_config_path: ${paths.pretrained_checkpoint_dir}/checkpoints_yourtts_cml_tts_dataset/config.json
-local_tar_path: /mnt/sagemaker-nvme/checkpoints_yourtts_cml_tts_dataset.tar.bz
+local_tar_path: /tmp/vecl-tts-checkpoint.tar.bz2
 language_ids_file: ${paths.pretrained_checkpoint_dir}/checkpoints_yourtts_cml_tts_dataset/language_ids.json 

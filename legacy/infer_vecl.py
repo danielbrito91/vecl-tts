@@ -9,7 +9,6 @@ from TTS.tts.models import setup_model
 from TTS.tts.utils.languages import LanguageManager
 from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.synthesis import synthesis
-
 from vecl.vecl.emotion_embedding import EmotionEmbedding
 
 # Prefer the custom VECL model (with emotion projection) when available

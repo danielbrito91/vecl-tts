@@ -1,18 +1,18 @@
+from pathlib import Path
+from typing import Dict, List, Union
+
 import torch
-from coqpit import Coqpit
 from torch import nn
-from TTS.tts.layers.losses import (
-    VitsDiscriminatorLoss,
-)
+from TTS.tts.layers.losses import VitsDiscriminatorLoss
 from TTS.tts.models.vits import Vits
 from TTS.tts.utils.languages import LanguageManager
 from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.utils.audio import AudioProcessor
 
-from vecl.vecl.config import VeclConfig
-from vecl.vecl.emotion_embedding import EmotionProj
-from vecl.vecl.loss import VeclGeneratorLoss
+from vecl.model.config import VeclArgs, VeclConfig
+from vecl.model.layers import EmotionProj
+from vecl.model.loss import VeclGeneratorLoss
 
 
 class Vecl(Vits):
@@ -22,18 +22,16 @@ class Vecl(Vits):
 
     def __init__(
         self,
-        config: Coqpit,
+        config: VeclConfig,
         ap: 'AudioProcessor',
         tokenizer,
         speaker_manager,
         language_manager=None,
     ):
-        # Pass all arguments to the parent Vits class
         super().__init__(
             config, ap, tokenizer, speaker_manager, language_manager
         )
 
-        # Initialize the emotion projection layer
         self.emotion_proj = None
         if (
             config.model_args.emotion_embedding_dim
@@ -44,13 +42,8 @@ class Vecl(Vits):
                 config.model_args.d_vector_dim,
             )
 
-    def format_batch(self, batch: dict) -> dict:
-        """
-        A complete and self-contained format_batch method.
-        It handles speaker_ids, language_ids, and d_vectors correctly
-        without calling the faulty parent method.
-        """
-        # 1. Get speaker_ids if use_speaker_embedding is enabled
+    def _get_speaker_ids(self, batch: dict) -> torch.Tensor:
+        """Get speaker IDs from batch."""
         speaker_ids = None
         if (
             self.speaker_manager is not None
@@ -62,40 +55,101 @@ class Vecl(Vits):
                 for sn in batch['speaker_names']
             ]
             speaker_ids = torch.LongTensor(speaker_ids)
+        return speaker_ids
 
-        # 2. Get language_ids if use_language_embedding is enabled
+    def _get_language_ids(self, batch: dict) -> torch.Tensor:
+        """Get language IDs from batch."""
         language_ids = None
         if (
             self.language_manager is not None
             and self.language_manager.name_to_id
             and self.args.use_language_embedding
+            and 'language_names' in batch
         ):
-            language_ids = [
-                self.language_manager.name_to_id[ln]
-                for ln in batch['language_names']
-            ]
-            language_ids = torch.LongTensor(language_ids)
+            try:
+                language_ids = []
+                for ln in batch['language_names']:
+                    if ln in self.language_manager.name_to_id:
+                        language_ids.append(
+                            self.language_manager.name_to_id[ln]
+                        )
+                    else:
+                        print(
+                            f"⚠️ Language '{ln}' not found in language manager. Available: {list(self.language_manager.name_to_id.keys())}"
+                        )
+                        # Use the first available language as fallback
+                        if self.language_manager.name_to_id:
+                            fallback_lang = list(
+                                self.language_manager.name_to_id.keys()
+                            )[0]
+                            language_ids.append(
+                                self.language_manager.name_to_id[fallback_lang]
+                            )
+                            print(
+                                f'   Using fallback language: {fallback_lang}'
+                            )
+                        else:
+                            language_ids.append(0)  # Default fallback
 
-        # 3. Correctly load d-vectors from SpeakerManager.embeddings (Coqui naming)
+                if language_ids:
+                    language_ids = torch.LongTensor(language_ids)
+            except Exception as e:
+                print(f'⚠️ Error processing language IDs: {e}')
+                language_ids = None
+        return language_ids
+
+    def _get_d_vectors(self, batch: dict) -> torch.Tensor:
         d_vectors = None
+
         if (
             self.args.use_d_vector_file
             and hasattr(self.speaker_manager, 'embeddings')
             and self.speaker_manager.embeddings
         ):
-            # The speaker embeddings dictionary lives under `speaker_manager.embeddings` in Coqui-TTS
             d_vector_mapping = self.speaker_manager.embeddings
             d_vectors_list = []
+
             for name in batch['audio_unique_names']:
+                # More comprehensive candidate key generation
+                base_name = name.split('/')[-1]  # Get filename part
+                name_no_ext = (
+                    base_name.split('.')[0] if '.' in base_name else base_name
+                )
+
                 candidate_keys = [
-                    name,  # original
-                    f'{name}.wav',  # add extension
-                    name.replace('-', '_'),  # replace dashes with underscores
-                    f'{name.replace("-", "_")}.wav',  # combo
-                    name.replace('#audio/', '#audio_'),  # slash -> underscore
+                    # Original variations
+                    name,
+                    f'{name}.wav',
+                    name.replace('-', '_'),
+                    f'{name.replace("-", "_")}.wav',
+                    name.replace('#audio/', '#audio_'),
                     f'{name.replace("#audio/", "#audio_")}.wav',
+                    # Additional variations with just filename
+                    base_name,
+                    f'{base_name}.wav',
+                    base_name.replace('-', '_'),
+                    f'{base_name.replace("-", "_")}.wav',
+                    # Variations without extension
+                    name_no_ext,
+                    name_no_ext.replace('-', '_'),
+                    name_no_ext.replace('_', '-'),
+                    # Common prefix patterns
+                    f'audio/{name}',
+                    f'audio/{base_name}',
+                    f'#audio/{name}',
+                    f'#audio/{base_name}',
+                    # Try with different extensions
+                    f'{name_no_ext}.flac',
+                    f'{name_no_ext}.mp3',
                 ]
 
+                # Remove duplicates while preserving order
+                seen = set()
+                candidate_keys = [
+                    x for x in candidate_keys if not (x in seen or seen.add(x))
+                ]
+
+                # Find match
                 matched_key = next(
                     (ck for ck in candidate_keys if ck in d_vector_mapping),
                     None,
@@ -103,7 +157,6 @@ class Vecl(Vits):
 
                 if matched_key is not None:
                     embedding_data = d_vector_mapping[matched_key]
-                    # dict or tensor
                     if (
                         isinstance(embedding_data, dict)
                         and 'embedding' in embedding_data
@@ -111,47 +164,63 @@ class Vecl(Vits):
                         d_vectors_list.append(embedding_data['embedding'])
                     else:
                         d_vectors_list.append(embedding_data)
-                else:
-                    print(
-                        f" [!] Warning: 'audio_unique_name' not found in d_vector mapping: {name}"
-                    )
 
             if len(d_vectors_list) == len(batch['audio_unique_names']):
                 d_vectors = torch.FloatTensor(d_vectors_list)
-            else:
-                print(
-                    ' [!] D-vectors not loaded for the batch because some keys were missing.'
-                )
 
-        # 4. Fuse emotion embeddings -> d_vectors (projection + L2-norm)
+        return d_vectors
+
+    def _fuse_emotion_embeddings(
+        self, emotion_embeddings: torch.Tensor, d_vectors: torch.Tensor
+    ) -> torch.Tensor:
+        if emotion_embeddings.dim() == 3:
+            emotion_embeddings = emotion_embeddings.squeeze(1)
+        proj_device = next(self.emotion_proj.parameters()).device
+        if emotion_embeddings.device != proj_device:
+            emotion_embeddings = emotion_embeddings.to(proj_device)
+        if d_vectors.device != proj_device:
+            d_vectors = d_vectors.to(proj_device)
+        projected_emo = self.emotion_proj(emotion_embeddings)
+        d_vectors = torch.nn.functional.normalize(d_vectors + projected_emo)
+        return d_vectors
+
+    def format_batch(self, batch: dict) -> dict:
+        """
+        A complete and self-contained format_batch method.
+        It handles speaker_ids, language_ids, and d_vectors correctly
+        without calling the faulty parent method.
+        """
+        speaker_ids = self._get_speaker_ids(batch)
+        language_ids = self._get_language_ids(batch)
+        d_vectors = self._get_d_vectors(batch)
         emotion_embeddings = batch.get('emotion_embeddings', None)
+
         if (
             self.emotion_proj is not None
             and emotion_embeddings is not None
             and d_vectors is not None
         ):
-            if emotion_embeddings.dim() == 3:
-                emotion_embeddings = emotion_embeddings.squeeze(1)
-            # Ensure tensors are on the same device as the projection layer
-            proj_device = next(self.emotion_proj.parameters()).device
-            if emotion_embeddings.device != proj_device:
-                emotion_embeddings = emotion_embeddings.to(proj_device)
-            if d_vectors.device != proj_device:
-                d_vectors = d_vectors.to(proj_device)
-            projected_emo = self.emotion_proj(emotion_embeddings)
-            d_vectors = torch.nn.functional.normalize(
-                d_vectors + projected_emo
+            d_vectors = self._fuse_emotion_embeddings(
+                emotion_embeddings, d_vectors
             )
 
-        # 5. Update the batch dictionary with all computed values
+        # The Coqui TTS Trainer has a check that requires speaker_ids to be
+        # present if a speaker_manager is available, even if we are using d_vectors.
+        # To bypass this, we create a placeholder tensor for speaker_ids if it's None
+        # but d_vectors are present. This prevents a crash in the trainer.
+        if speaker_ids is None and d_vectors is not None:
+            # Create a tensor of zeros with the same batch size and device as d_vectors
+            speaker_ids = torch.zeros(
+                d_vectors.size(0), dtype=torch.long, device=d_vectors.device
+            )
+
         batch['d_vectors'] = d_vectors
         batch['speaker_ids'] = speaker_ids
         batch['language_ids'] = language_ids
         return batch
 
-    # Keep signature-compatible forward that simply calls parent since fusion
-    # moved to `format_batch`.
     def forward(self, x, x_lengths, y, y_lengths, waveform, aux_input=None):  # noqa: D401,E501
+        """Keep signature-compatible forward that simply calls parent since fusion moved to `format_batch`."""
         return super().forward(
             x, x_lengths, y, y_lengths, waveform, aux_input=aux_input
         )
@@ -166,43 +235,19 @@ class Vecl(Vits):
     def train_step(
         self, batch: dict, criterion: nn.Module, optimizer_idx: int
     ):
-        """Override the train_step to pass additional arguments to the loss function."""
-        # ------------------------------------------------------------------
-        # SAFETY PATCH — ensure `.forward` has the expected signature.
-        # After calling `export_onnx()` Coqui-TTS temporarily replaces
-        # `self.forward` with a 3-arg inference stub.  If a dev accidentally
-        # calls `export_onnx()` in the same Python process and then tries to
-        # resume training, `Vits.train_step` will invoke `forward()` with six
-        # positional arguments and raise a `TypeError`.  Here we detect that
-        # situation and restore the original implementation on-the-fly.
-        # ------------------------------------------------------------------
-        if self.forward.__code__.co_argcount < 6:  # monkey-patched version
-            # Re-bind the class method to this instance.
-            self.forward = Vecl.forward.__get__(self)
+        # Spec and Mel are computed on the device for more efficient memory usage.
+        batch = self.format_batch_on_device(batch)
 
         if optimizer_idx == 0:
-            # The discriminator step is unchanged
+            # The discriminator step in VITS computes generator outputs and caches them.
+            # We then pass these to the discriminator.
             return super().train_step(batch, criterion, optimizer_idx)
 
         if optimizer_idx == 1:
-            # ------------------------------------------------------------------
-            # Generator (optimizer_idx == 1)
-            # ------------------------------------------------------------------
-            # Use the cached tensors from the discriminator pass.
-            outputs = (
-                self.model_outputs_cache
-            )  # calculated when optimizer_idx==0
-
-            # ----- Compute mel segments (ground-truth and generated) ----------
-            # This mirrors the upstream VITS implementation which relies on
-            # `segment` + `wav_to_mel` utilities that work directly with torch
-            # tensors – avoiding the Librosa/numpy path that tripped the
-            # previous error.
-
-            from TTS.tts.utils.helpers import (
-                segment,  # local import to avoid circular issues
-            )
-            from TTS.utils.audio.torch_transforms import wav_to_mel
+            # The generator step uses the cached outputs from the discriminator pass.
+            outputs = self.model_outputs_cache
+            from TTS.tts.models.vits import wav_to_mel
+            from TTS.tts.utils.helpers import segment
 
             with torch.autocast('cuda', enabled=False):
                 if self.args.encoder_sample_rate:
@@ -212,15 +257,12 @@ class Vecl(Vits):
                 else:
                     spec_segment_size = self.spec_segment_size
 
-                # Ground-truth mel slice (target)
                 mel_slice = segment(
                     batch['mel'].float(),
                     outputs['slice_ids'],
                     spec_segment_size,
                     pad_short=True,
                 )
-
-                # Predicted mel slice (hat)
                 mel_slice_hat = wav_to_mel(
                     y=outputs['model_outputs'].float(),
                     n_fft=self.config.audio.fft_size,
@@ -233,18 +275,13 @@ class Vecl(Vits):
                     center=False,
                 )
 
-            # ----- Discriminator scores ---------------------------------------
             scores_disc_fake, feats_disc_fake, _, feats_disc_real = self.disc(
                 outputs['model_outputs'], outputs['waveform_seg']
             )
-
-            # ----- Compute VECL generator loss --------------------------------
             with torch.autocast('cuda', enabled=False):
-                loss_dict = criterion[
-                    optimizer_idx
-                ](
-                    mel_slice_hat=mel_slice.float(),  # follow upstream arg order
-                    mel_slice=mel_slice_hat.float(),  # ^ see VITS implementation
+                loss_dict = criterion[optimizer_idx](
+                    mel_slice_hat=mel_slice.float(),
+                    mel_slice=mel_slice_hat.float(),
                     z_p=outputs['z_p'].float(),
                     logs_q=outputs['logs_q'].float(),
                     m_p=outputs['m_p'].float(),
@@ -255,97 +292,101 @@ class Vecl(Vits):
                     feats_disc_real=feats_disc_real,
                     loss_duration=outputs['loss_duration'],
                     use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
-                    gt_spk_emb=outputs['gt_spk_emb'],
-                    syn_spk_emb=outputs['syn_spk_emb'],
+                    gt_spk_emb=outputs.get('gt_spk_emb'),
+                    syn_spk_emb=outputs.get('syn_spk_emb'),
                     generated_wav=outputs['model_outputs'],
-                    ref_emotion_embeddings=batch.get(
-                        'emotion_embeddings', None
-                    ),
+                    ref_emotion_embeddings=batch.get('emotion_embeddings'),
                     sample_rate=self.config.audio.sample_rate,
                 )
-
             return outputs, loss_dict
-
         raise ValueError(' [!] Unexpected `optimizer_idx`.')
 
     @staticmethod
-    def init_from_config(config: 'VeclConfig', samples: list = None):
-        """Initiate a Vecl model and its components from a config object."""
-        # This method is correct and remains the same
-        from TTS.utils.audio import AudioProcessor
+    def init_from_config(
+        config: VeclConfig,
+        samples: Union[List[List], List[Dict]] = None,
+    ):
+        """Initiate model from config"""
+        # Ensure model_args is the correct type, not a dict
+        if isinstance(config.model_args, dict):
+            config.model_args = VeclArgs(**config.model_args)
 
         ap = AudioProcessor.init_from_config(config)
-        tokenizer, new_config = TTSTokenizer.init_from_config(config)
+        tokenizer, tokenizer_config = TTSTokenizer.init_from_config(config)
 
-        # --- Patch: TTSTokenizer.init_from_config may return a shallow copy of the
-        # config that drops custom attributes that exist only in our subclass.
-        # Guarantee the sampler-related attributes are present to avoid
-        # AttributeErrors downstream.
-        if (
-            not hasattr(new_config, 'weighted_sampler_multipliers')
-            or new_config.weighted_sampler_multipliers is None
-        ):
-            new_config.weighted_sampler_multipliers = {}
-        if (
-            not hasattr(new_config, 'weighted_sampler_attrs')
-            or new_config.weighted_sampler_attrs is None
-        ):
-            new_config.weighted_sampler_attrs = {'language': 1.0}
-
-        speaker_manager = SpeakerManager.init_from_config(config, samples)
-        language_manager = LanguageManager.init_from_config(config)
-
-        if config.model_args.speaker_encoder_model_path:
-            speaker_manager.init_encoder(
-                config.model_args.speaker_encoder_model_path,
-                config.model_args.speaker_encoder_config_path,
-            )
-
-        return Vecl(
-            new_config, ap, tokenizer, speaker_manager, language_manager
+        # SpeakerManager will find the d_vector_file in the config object
+        speaker_manager = SpeakerManager.init_from_config(
+            config, samples=samples
         )
 
-    # ------------------------------------------------------------------
-    # Sampler override – make training robust to missing config fields
-    # ------------------------------------------------------------------
+        # Initialize language manager with proper configuration
+        language_manager = None
+        if getattr(config.model_args, 'use_language_embedding', False):
+            # Check if language_ids_file exists and is configured
+            language_ids_file = getattr(
+                config.model_args, 'language_ids_file', None
+            )
+            if language_ids_file and Path(language_ids_file).exists():
+                print(
+                    f'🌍 Initializing language manager from: {language_ids_file}'
+                )
+
+                # CRITICAL FIX: LanguageManager expects language_ids_file at the top level of config
+                # not just in model_args. We need to set it at both levels.
+                config.language_ids_file = str(language_ids_file)
+                config.model_args.language_ids_file = str(language_ids_file)
+
+                # Also set num_languages from the JSON file
+                import json
+
+                with open(language_ids_file, 'r') as f:
+                    language_ids = json.load(f)
+                config.model_args.num_languages = len(language_ids)
+
+                language_manager = LanguageManager.init_from_config(config)
+
+                # Update config with actual language count from the loaded manager
+                if language_manager and hasattr(
+                    language_manager, 'name_to_id'
+                ):
+                    actual_lang_count = len(language_manager.name_to_id)
+                    config.model_args.num_languages = actual_lang_count
+                    print(
+                        f'✅ Language manager initialized with {actual_lang_count} languages: {list(language_manager.name_to_id.keys())}'
+                    )
+                else:
+                    print('⚠️ Language manager initialized but appears empty')
+            else:
+                print(
+                    f'⚠️ Language embeddings enabled but language_ids_file not found: {language_ids_file}'
+                )
+                print('   Creating empty language manager for compatibility')
+                language_manager = LanguageManager()
+        else:
+            print(
+                '🌍 Language embeddings disabled - no language manager created'
+            )
+
+        model = Vecl(config, ap, tokenizer, speaker_manager, language_manager)
+        return model, config
+
     def get_sampler(self, config, dataset, num_gpus=1, is_eval=False):  # noqa: D401,E501
-        """Return a sampler but guarantee required config dicts are valid.
-
-        Coqui-TTS expects `config.weighted_sampler_multipliers` to be a dict.
-        When the config is serialized/deserialized by Coqpit it can become
-        `None`, leading to `AttributeError` in the base implementation.
-        We defensively replace `None` with an empty dict before delegating
-        to `Vits.get_sampler`.
-        """
-
+        """Return a sampler but guarantee required config dicts are valid."""
         if getattr(config, 'weighted_sampler_multipliers', None) is None:
             config.weighted_sampler_multipliers = {}
 
         if getattr(config, 'weighted_sampler_attrs', None) is None:
             config.weighted_sampler_attrs = {}
 
-        # --- Mini-dataset safeguard -------------------------------------------------
-        # If we are running a tiny local test (e.g., only a few samples in memory)
-        # but keep the default batch_size=32, BucketBatchSampler with
-        # `drop_last=True` will drop the incomplete batch, leaving the dataloader
-        # empty and triggering an AssertionError.  Detect that situation and
-        # down-scale the batch size or disable the weighted sampler so that at
-        # least one batch is produced.
-
         if len(dataset) < getattr(config, 'batch_size', 1):
-            # Reduce batch size to dataset length
             config.batch_size = len(dataset)
             config.eval_batch_size = len(dataset)
-            # A tiny dataset does not need a weighted sampler.
             config.use_weighted_sampler = False
 
         return super().get_sampler(
             config, dataset, num_gpus=num_gpus, is_eval=is_eval
         )
 
-    # ------------------------------------------------------------------
-    # Data-loader override – relax text length limits for debug mini-runs
-    # ------------------------------------------------------------------
     def get_data_loader(
         self,
         config,
@@ -355,30 +396,16 @@ class Vecl(Vits):
         verbose,
         num_gpus,
         rank=None,
-    ):  # noqa: D401,E501
-        """Wrap parent implementation but enlarge `max_text_len` when we are
-        deliberately feeding a *very* small set of samples for quick local
-        checks (like the 2-sample notebook sanity run).  This prevents
-        `VitsDataset.__getitem__` from recursively discarding every sample and
-        throwing an `IndexError`.
-        """
-
+    ):
+        """Wrap parent implementation but enlarge `max_text_len` for debug."""
         original_max_text_len = config.max_text_len
 
         try:
-            # Detect mini-dataset: < 8 examples means user is probably running a
-            # quick interactive check.  Heuristically relax the text length
-            # constraint.
             if len(samples) < 8:
-                config.max_text_len = 10_000  # effectively no limit
+                config.max_text_len = 10_000
 
-            # ------------------------------------------------------------------
-            # Choose dataset class: use `VeclDataset` when an emotion embedding
-            # file is provided, otherwise fall back to the base `VitsDataset`.
-            # ------------------------------------------------------------------
-
-            from vecl.vecl.dataset import (
-                VeclDataset,  # always use the VECL-aware dataset
+            from vecl.dataset.vecl_dataset import (
+                VeclDataset,
             )
 
             dataset = VeclDataset(
@@ -400,16 +427,13 @@ class Vecl(Vits):
                 ),
             )
 
-            # sort input sequences from short to long
             dataset.preprocess_samples()
 
-            # wait for all processes in DDP
             if num_gpus > 1:
                 import torch.distributed as dist
 
                 dist.barrier()
 
-            # ----- Sampler logic (same as VITS) -----------------------------
             sampler = self.get_sampler(
                 config, dataset, num_gpus, is_eval=is_eval
             )
@@ -455,21 +479,10 @@ class Vecl(Vits):
 
             return loader
         finally:
-            # Always restore original value so real training is unaffected.
             config.max_text_len = original_max_text_len
 
     def get_aux_input_from_test_sentences(self, sentence_info):  # noqa: D401,E501
-        """Robust version that trims whitespace and tolerates missing speakers.
-
-        sentence_info is a tuple like (text, utt_id, speaker_name, language).
-        Upstream crashes if `speaker_name` is not found inside
-        `SpeakerManager.embeddings_by_names`.  This happens in some CML test
-        sentences where the ID in the CSV has trailing new-line chars.  We
-        sanitise and fall back to *no* speaker conditioning if still missing.
-        """
-
-        import torch
-
+        """Robust version that trims whitespace and tolerates missing speakers."""
         text, utt_id, speaker_name, language = sentence_info
 
         speaker_name = (
@@ -479,12 +492,10 @@ class Vecl(Vits):
         )
 
         aux = {
-            'text': text,  # required by VITS.test_run()
-            # singular keys used by VITS.test_run -> inference()
+            'text': text,
             'd_vector': None,
             'speaker_id': None,
             'language_id': None,
-            # plural variants still used elsewhere in VECL overrides
             'd_vectors': None,
             'speaker_ids': None,
             'language_ids': None,
@@ -492,7 +503,6 @@ class Vecl(Vits):
             'style_text': None,
         }
 
-        # Language embedding --------------------------------------------------
         if (
             self.language_manager is not None
             and language in self.language_manager.name_to_id
@@ -501,7 +511,6 @@ class Vecl(Vits):
             aux['language_ids'] = torch.LongTensor([[lang_id]])
             aux['language_id'] = torch.LongTensor([lang_id])
 
-        # Speaker embedding ---------------------------------------------------
         if self.speaker_manager is not None and speaker_name:
             try:
                 dvec = self.speaker_manager.get_mean_embedding(
@@ -519,26 +528,13 @@ class Vecl(Vits):
                     f" [!] Speaker '{speaker_name}' not found in embeddings; proceeding without d_vector."
                 )
 
-        # ------------------------------------------------------------------
-        # Guarantee that HiFi-GAN conditioner always receives a tensor.
-        # When the model was trained with d-vectors, ``self.waveform_decoder``
-        # has ``cond_layer`` and will crash if ``g`` (speaker conditioning)
-        # is None.  Provide a zero-vector with proper shape when we could
-        # not retrieve any real embedding.
-        #
-        # NOTE: `Vits.inference` expects `d_vectors` (plural). The `synthesis`
-        # helper passes `d_vector` (singular), but we populate `d_vectors`
-        # here to be safe and ensure the correct key is used downstream.
-        # The synthesis utility expects CPU tensors, so we create the fallback
-        # tensor on CPU.
-        # ------------------------------------------------------------------
         if (
             aux['d_vectors'] is None
             and getattr(self.args, 'use_d_vector_file', False)
             and getattr(self.args, 'd_vector_dim', 0) > 0
         ):
             dim = self.args.d_vector_dim
-            zeros = torch.zeros(dim)  # on CPU
+            zeros = torch.zeros(dim)
             aux['d_vector'] = zeros
             aux['d_vectors'] = zeros.unsqueeze(0)
 

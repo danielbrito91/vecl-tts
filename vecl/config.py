@@ -32,8 +32,15 @@ class PathsConfig(BaseModel):
     restore_path: Path = Field(
         ..., description='Path to a checkpoint to restore from.'
     )
+    pretrained_config_path: Path = Field(
+        ..., description='Path to the pretrained config file.'
+    )
     local_tar_path: Path = Field(
         ..., description='Local path to the tar file for S3 upload/download.'
+    )
+    language_ids_file: Path = Field(
+        ...,
+        description='Path to the language IDs JSON file for language management.',
     )
 
 
@@ -108,6 +115,18 @@ class TrainingConfig(BaseModel):
     use_pretrained_lang_embeddings: bool = Field(
         ..., description='Use pretrained language embeddings.'
     )
+    use_language_embedding: bool = Field(
+        True, description='Use language embeddings during training.'
+    )
+    run_name: str = Field(
+        ..., description='Name of the training run for logging.'
+    )
+    eval_split_max_size: int = Field(
+        ..., description='Max number of samples for the evaluation split.'
+    )
+    eval_split_size: float = Field(
+        ..., description='Fraction of the dataset to use for evaluation.'
+    )
 
 
 class S3Config(BaseModel):
@@ -122,6 +141,14 @@ class S3Config(BaseModel):
     )
     cml_tts_checkpoint_key: str = Field(
         ..., description='S3 key for the CML-TTS model.'
+    )
+    emotion_embeddings_key: str = Field(
+        'tts/vecl-tts/emotion_embeddings.pth',
+        description='S3 key for the pre-computed emotion embeddings file.',
+    )
+    speaker_embeddings_key: str = Field(
+        'tts/yourtts/embeddings/speakers.pth',
+        description='S3 key for the pre-computed speaker embeddings file.',
     )
 
 
@@ -138,6 +165,10 @@ class ModelConfig(BaseModel):
     type: str = Field(
         ..., description="Type of model to train ('vecl' or 'yourtts')."
     )
+    ser_model_name: str = Field(
+        'alefiury/wav2vec2-xls-r-300m-pt-br-spontaneous-speech-emotion-recognition',
+        description='Name of the Speech Emotion Recognition model from Hugging Face.',
+    )
     use_emotion_consistency_loss: bool = Field(
         False,
         description='Whether to use the emotion consistency loss (for VECL).',
@@ -150,6 +181,6 @@ class AppConfig(BaseModel):
     paths: PathsConfig
     audio: AudioConfig
     training: TrainingConfig
-    s3: S3Config
-    wandb: WandbConfig
+    s3: Optional[S3Config] = None
+    wandb: Optional[WandbConfig] = None
     model: ModelConfig
