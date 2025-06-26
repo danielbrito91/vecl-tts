@@ -1,5 +1,6 @@
 import glob
 import os
+import shutil
 from pathlib import Path
 
 import boto3
@@ -14,6 +15,7 @@ class UnifiedTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         self.s3_bucket = kwargs.pop('s3_bucket', None)
         self.s3_prefix = kwargs.pop('s3_prefix', 'checkpoints')
+        self.dataset_path = kwargs.pop('dataset_path', None)
 
         if self.s3_bucket and boto3:
             print(
@@ -26,6 +28,30 @@ class UnifiedTrainer(Trainer):
             )
             self.s3_client = None
         super().__init__(*args, **kwargs)
+
+    def _copy_embedding_files_if_needed(self):
+        """Copy embedding files from dataset directory to run directory if they don't exist."""
+        if not self.dataset_path:
+            return
+
+        run_output_dir = Path(self.output_path)
+        dataset_dir = Path(self.dataset_path)
+
+        # Files that might need copying from dataset to run directory
+        embedding_files = ['speakers.pth', 'emotions.pth']
+
+        for filename in embedding_files:
+            run_file = run_output_dir / filename
+            dataset_file = dataset_dir / filename
+
+            if not run_file.exists() and dataset_file.exists():
+                try:
+                    shutil.copy2(dataset_file, run_file)
+                    print(
+                        f"    > 📁 Copied '{filename}' from dataset to run directory"
+                    )
+                except Exception as e:
+                    print(f"    > ⚠️ Failed to copy '{filename}': {e}")
 
     def save_checkpoint(self, *args, **kwargs):
         checkpoint_path = super().save_checkpoint(*args, **kwargs)
@@ -45,6 +71,9 @@ class UnifiedTrainer(Trainer):
             checkpoint_path = max(checkpoint_files, key=os.path.getmtime)
             print(f'   > ✅ Latest checkpoint found: {checkpoint_path}')
 
+        # Copy embedding files if they don't exist in the run directory
+        self._copy_embedding_files_if_needed()
+
         run_output_dir = Path(self.output_path)
         run_name = run_output_dir.name
         s3_run_path = f'{self.s3_prefix}/{run_name}'
@@ -55,7 +84,7 @@ class UnifiedTrainer(Trainer):
                 'config.json',
                 'language_ids.json',
                 'speakers.pth',
-                'emotion_embeddings.pth',
+                'emotions.pth',
                 Path(checkpoint_path).name,
             ]
             print(f'    > Files to upload: {files_to_upload}')

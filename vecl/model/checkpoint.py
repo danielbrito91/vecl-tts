@@ -3,6 +3,7 @@ Utilities for loading model checkpoints, patching state dicts, and handling
 model-related file downloads.
 """
 
+import shutil
 from pathlib import Path
 
 import torch
@@ -20,26 +21,65 @@ from vecl.utils.downloader import download_s3_file
 
 def _resolve_speaker_encoder_paths(config: AppConfig) -> tuple[Path, Path]:
     """
-    Ensures the speaker encoder model and config are available, downloading
-    them from S3 if necessary.
+    Ensures the speaker encoder model and config are available.
+
+    This function implements a cascading search logic:
+    1. Check the target `speaker_encoder_model_dir`.
+    2. Check the directory where the main model checkpoint was restored.
+       If found there, move the files to the target directory.
+    3. As a last resort, attempt to download from a default S3 location.
     """
-    se_model_path = config.paths.speaker_encoder_model_dir / 'model_se.pth'
-    se_config_path = config.paths.speaker_encoder_model_dir / 'config_se.json'
+    se_dir = config.paths.speaker_encoder_model_dir
+    se_model_path = se_dir / 'model_se.pth'
+    se_config_path = se_dir / 'config_se.json'
 
+    # Ensure the target directory exists
+    se_dir.mkdir(parents=True, exist_ok=True)
+
+    # Source path is the directory of the main model checkpoint
+    source_dir = config.paths.restore_path.parent
+
+    # Check for model
     if not se_model_path.is_file():
-        print('Speaker encoder model not found locally.')
-        download_s3_file(
-            bucket_name=config.s3.bucket_name,
-            s3_key='speaker_encoder/model_se.pth',
-            local_path=se_model_path,
-        )
+        source_model_path = source_dir / 'model_se.pth'
+        if source_model_path.is_file():
+            print(
+                f'Found speaker encoder model in {source_dir}. Moving to {se_dir}'
+            )
+            shutil.move(str(source_model_path), str(se_model_path))
+        else:
+            print(
+                'Speaker encoder model not found locally, attempting S3 download.'
+            )
+            download_s3_file(
+                bucket_name=config.s3.bucket_name,
+                s3_key='speaker_encoder/model_se.pth',
+                local_path=se_model_path,
+            )
 
+    # Check for config
     if not se_config_path.is_file():
-        print('Speaker encoder config not found locally.')
-        download_s3_file(
-            bucket_name=config.s3.bucket_name,
-            s3_key='speaker_encoder/config_se.json',
-            local_path=se_config_path,
+        source_config_path = source_dir / 'config_se.json'
+        if source_config_path.is_file():
+            print(
+                f'Found speaker encoder config in {source_dir}. Moving to {se_dir}'
+            )
+            shutil.move(str(source_config_path), str(se_config_path))
+        else:
+            print(
+                'Speaker encoder config not found locally, attempting S3 download.'
+            )
+            download_s3_file(
+                bucket_name=config.s3.bucket_name,
+                s3_key='speaker_encoder/config_se.json',
+                local_path=se_config_path,
+            )
+
+    if not se_model_path.is_file() or not se_config_path.is_file():
+        raise FileNotFoundError(
+            f'Could not find or download speaker encoder files. '
+            f'Checked locations:\n- {se_dir}\n- {source_dir}\n'
+            f'Attempted S3 download as a fallback.'
         )
 
     return se_model_path, se_config_path
@@ -53,8 +93,61 @@ def load_model_for_training(config: AppConfig, dataset_configs: list):
     """
     model_strategy = get_model_strategy(config)
 
-    # 1. Load the pretrained model config from the checkpoint directory.
-    model_config_path = config.paths.restore_path.parent / 'config.json'
+    # ------------------------------------------------------------------
+    # Ensure the pretrained checkpoint directory is populated.
+    # ------------------------------------------------------------------
+    restore_path = config.paths.restore_path
+
+    if not restore_path.exists():
+        print(f'Restore checkpoint not found at {restore_path}.')
+
+        # 1) Try to extract from a local tar file if it exists.
+        local_tar = config.paths.local_tar_path
+        if local_tar and local_tar.exists():
+            print(f'Found local tar archive at {local_tar}. Extracting...')
+            try:
+                from vecl.utils.downloader import extract_tar_file
+
+                extract_tar_file(
+                    local_tar, config.paths.pretrained_checkpoint_dir
+                )
+            except Exception as e:
+                print(f'❌ Failed to extract {local_tar}: {e}')
+
+        # 2) If still missing and S3 config is provided, download & extract.
+        if not restore_path.exists() and config.s3:
+            print('Attempting to download pretrained checkpoint from S3...')
+            try:
+                from vecl.utils.downloader import (
+                    download_s3_file,
+                    extract_tar_file,
+                )
+
+                s3_key = config.s3.cml_tts_checkpoint_key
+                bucket = config.s3.bucket_name
+                # Download to local_tar (even if it did not exist before)
+                download_s3_file(bucket, s3_key, local_tar)
+                extract_tar_file(
+                    local_tar, config.paths.pretrained_checkpoint_dir
+                )
+            except Exception as e:
+                print(
+                    f'❌ Failed to download or extract checkpoint from S3: {e}'
+                )
+
+        # Re-check after extraction/download.
+        if not restore_path.exists():
+            raise FileNotFoundError(
+                f'Could not locate restore checkpoint even after extraction attempts: {restore_path}'
+            )
+
+    # ------------------------------------------------------------------
+    # Locate the model config JSON.
+    # ------------------------------------------------------------------
+    model_config_path = config.paths.pretrained_config_path
+    if not model_config_path.exists():
+        model_config_path = config.paths.restore_path.parent / 'config.json'
+
     if not model_config_path.exists():
         raise FileNotFoundError(
             f'Pretrained config not found at {model_config_path}'
@@ -97,6 +190,24 @@ def load_model_for_training(config: AppConfig, dataset_configs: list):
     model_config.audio.max_audio_len = int(
         config.audio.max_audio_len_seconds * config.audio.sample_rate
     )
+
+    # ------------------------------------------------------------------
+    # Ensure speaker encoder files are available and configured.
+    # ------------------------------------------------------------------
+    if hasattr(model_config, 'model_args') and (
+        hasattr(model_config.model_args, 'speaker_encoder_model_path') or True
+    ):
+        se_model_path, se_config_path = _resolve_speaker_encoder_paths(config)
+        model_config.model_args.speaker_encoder_model_path = str(se_model_path)
+        model_config.model_args.speaker_encoder_config_path = str(
+            se_config_path
+        )
+        # TTS (SpeakerManager) also looks for these attributes at the root
+        # level of the config. Setting them here avoids it falling back to
+        # the original (often relative) paths saved inside the pretrained
+        # `config.json`.
+        model_config.speaker_encoder_model_path = str(se_model_path)
+        model_config.speaker_encoder_config_path = str(se_config_path)
 
     # 4. Initialize the model using the strategy, unpacking the returned tuple
     model, model_config = model_strategy.init_model_from_config(model_config)

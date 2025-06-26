@@ -1,2 +1,2 @@
-project_name: "vecl-finetuned"
+project_name: "finetune-${model.type}"
 entity: ${oc.env:WANDB_ENTITY} 

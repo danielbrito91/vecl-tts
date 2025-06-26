@@ -2,13 +2,17 @@ import logging
 from pathlib import Path
 
 import hydra
+from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from trainer import TrainerArgs
 from TTS.tts.datasets import load_tts_samples
 
 from vecl.config import AppConfig
 from vecl.dataset.preparation import prepare_dataset_configs
-from vecl.embeddings import compute_speaker_embeddings
+from vecl.embeddings import (
+    compute_emotion_embeddings,
+    compute_speaker_embeddings,
+)
 from vecl.model.checkpoint import load_model_for_training
 from vecl.model.strategy.factory import get_model_strategy
 from vecl.training.trainer import UnifiedTrainer
@@ -23,6 +27,7 @@ def main(cfg: DictConfig) -> None:
     """
     Main training script for VECL and YourTTS models.
     """
+    load_dotenv()
     # --- 1. Load and Validate Configuration ---
     logger.info('Loading and validating configuration...')
     config = AppConfig.model_validate(
@@ -73,12 +78,29 @@ def main(cfg: DictConfig) -> None:
             '⚠️ D-vector file usage is disabled. Skipping speaker embeddings computation.'
         )
 
-    # --- 4. Initialize Model ---
+    # --- 4. Compute Emotion Embeddings ---
+    if config.training.use_emotion_embedding and config.model.type == 'vecl':
+        logger.info('Computing emotion embeddings...')
+        compute_emotion_embeddings(
+            dataset_configs=dataset_configs,
+            embeddings_file_path=config.paths.emotion_embeddings_file,
+            ser_model_name=config.model.ser_model_name,
+            s3_bucket=config.s3.bucket_name if config.s3 else None,
+            s3_key=config.s3.emotion_embeddings_key if config.s3 else None,
+        )
+        logger.info('✅ Emotion embeddings computation completed.')
+
+    else:
+        logger.info(
+            '⚠️ Emotion embeddings disabled or not using VECL model. Skipping emotion embeddings computation.'
+        )
+
+    # --- 5. Initialize Model ---
     logger.info(f'Initializing model of type: {config.model.type}')
 
     model = load_model_for_training(config, dataset_configs)
 
-    # --- 5. Initialize Trainer ---
+    # --- 6. Initialize Trainer ---
     logger.info('Initializing trainer...')
     trainer_args = (
         TrainerArgs()
@@ -104,10 +126,11 @@ def main(cfg: DictConfig) -> None:
         model=model,
         train_samples=train_samples,
         eval_samples=eval_samples,
+        dataset_path=config.paths.dataset_path,
         **s3_kwargs,
     )
 
-    # --- 6. Start Training ---
+    # --- 7. Start Training ---
     logger.info('🚀 Starting training...')
     trainer.fit()
     logger.info('🎉 Training finished.')
