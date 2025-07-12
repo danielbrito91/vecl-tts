@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -8,6 +9,8 @@ import pytest
 import torch
 from hydra.core.global_hydra import GlobalHydra
 from TTS.config.shared_configs import BaseDatasetConfig
+
+from tests.fixtures.data import SAMPLE_TTS_SAMPLES
 
 
 @pytest.fixture(autouse=True)
@@ -78,33 +81,35 @@ def mock_dataset_configs():
 
 @pytest.fixture
 def sample_tts_samples():
-    """Create sample TTS samples for testing."""
-    return [
-        {
-            'speaker_name': 'speaker_001',
-            'audio_file': '/path/to/audio_001.wav',
-            'audio_unique_name': 'audio_001#speaker_001',
-            'root_path': '/path/to',
-            'text': 'hello world',
-        },
-        {
-            'speaker_name': 'speaker_002',
-            'audio_file': '/path/to/audio_002.wav',
-            'audio_unique_name': 'audio_002#speaker_002',
-            'root_path': '/path/to',
-            'text': 'another sentence',
-        },
-        {
-            'speaker_name': 'speaker_001',  # Same speaker, different audio
-            'audio_file': '/path/to/audio_003.wav',
-            'audio_unique_name': 'audio_003#speaker_001',
-            'root_path': '/path/to',
-            'text': 'third sentence',
-        },
-    ]
+    """Sample TTS dataset rows used across tests."""
+    return SAMPLE_TTS_SAMPLES
 
 
 @pytest.fixture
 def mock_audio_tensor():
     """Create a mock audio tensor for testing."""
     return torch.randn(1, 16000)  # 1 second of audio at 16kHz
+
+
+@pytest.fixture
+def create_app_config(temp_dataset_dir):
+    """Factory to build minimal AppConfig-like stubs for dataset tests."""
+
+    def _factory(
+        *,
+        dataset_dir=temp_dataset_dir,
+        metadata_file='metadata.csv',
+        s3_bucket_name=None,
+        s3_key='processed_24k.tar.gz',
+    ):
+        paths = SimpleNamespace(
+            dataset_path=dataset_dir, metadata_file=metadata_file
+        )
+        s3 = (
+            SimpleNamespace(bucket_name=s3_bucket_name, data_key=s3_key)
+            if s3_bucket_name
+            else None
+        )
+        return SimpleNamespace(paths=paths, s3=s3)
+
+    return _factory

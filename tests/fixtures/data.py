@@ -1,0 +1,42 @@
+SAMPLE_TTS_SAMPLES = [
+    {
+        'text': 'aquela história que a senhora tava contando no intervalo quando a gente parou um pouquinho uh da da infância da senhora que a senhora tava conversando no portão com a amiga ah a senhora pode contar de novo para a gente',
+        'audio_file': 'data/processed_24k/audio/coraaa-486-00000.wav',
+        'speaker_name': 'coraa_mupe_nan_X',
+        'root_path': 'data/processed_24k',
+        'language': 'pt-br',
+        'audio_unique_name': 'multilingual_custom_pt-br#audio/coraaa-486-00000',
+    },
+    {
+        'text': 'agora falando mais assim da personalidade dele né como ele chegou aqui no brasil ele como ele se comunicava com vocês como é que',
+        'audio_file': 'data/processed_24k/audio/coraaa-904-00001.wav',
+        'speaker_name': 'coraa_mupe_ACA047_F',
+        'root_path': 'data/processed_24k',
+        'language': 'pt-br',
+        'audio_unique_name': 'multilingual_custom_pt-br#audio/coraaa-904-00001',
+    },
+    {
+        'text': 'e ao longo da vida o senhor teve contato com os irmãos além desse irmão da irmã lá de santa cruz do rio pardo',
+        'audio_file': 'data/processed_24k/audio/coraaa-874-00002.wav',
+        'speaker_name': 'coraa_mupe_ACC038_F',
+        'root_path': 'data/processed_24k',
+        'language': 'pt-br',
+        'audio_unique_name': 'multilingual_custom_pt-br#audio/coraaa-874-00002',
+    },
+    {
+        'text': 'e quarenta e três e qual que é o nome inteiro',
+        'audio_file': 'data/processed_24k/audio/coraaa-717-00003.wav',
+        'speaker_name': 'coraa_mupe_AD030_F',
+        'root_path': 'data/processed_24k',
+        'language': 'pt-br',
+        'audio_unique_name': 'multilingual_custom_pt-br#audio/coraaa-717-00003',
+    },
+    {
+        'text': 'quai quais são os outros países que você que eu já viajei que você visitou nessa nessa nessa época desse ano',
+        'audio_file': 'data/processed_24k/audio/coraaa-529-00999.wav',
+        'speaker_name': 'coraa_mupe_MA_HV215_M',
+        'root_path': 'data/processed_24k',
+        'language': 'pt-br',
+        'audio_unique_name': 'multilingual_custom_pt-br#audio/coraaa-529-00999',
+    },
+]
