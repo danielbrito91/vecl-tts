@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 import torch
 from hydra.core.global_hydra import GlobalHydra
+from omegaconf import DictConfig, OmegaConf
 from TTS.config.shared_configs import BaseDatasetConfig
 
 from tests.fixtures.data import SAMPLE_TTS_SAMPLES
@@ -122,3 +123,77 @@ def create_app_config(temp_dataset_dir):
         return SimpleNamespace(paths=paths, s3=s3)
 
     return _factory
+
+
+@pytest.fixture
+def hydra_test_config(temp_dataset_dir: Path) -> DictConfig:
+    """Create a default DictConfig for testing the training script."""
+    output_path = temp_dataset_dir / 'output'
+    config_dict = {
+        'paths': {
+            'output_path': str(output_path),
+            'dataset_path': str(temp_dataset_dir),
+            'metadata_file': 'metadata.csv',
+            'speaker_embeddings_file': str(output_path / 'speakers.pth'),
+            'emotion_embeddings_file': str(output_path / 'emotions.pth'),
+            'speaker_encoder_model_dir': 'speaker_encoder/',
+            'pretrained_checkpoint_dir': str(
+                output_path / 'pretrained_checkpoints'
+            ),
+            'restore_path': str(output_path / 'restore.pth'),
+            'pretrained_config_path': str(
+                output_path / 'pretrained_config.json'
+            ),
+            'local_tar_path': str(output_path / 'data.tar.gz'),
+            'language_ids_file': str(output_path / 'language_ids.json'),
+        },
+        'audio': {'sample_rate': 24000, 'max_audio_len_seconds': 20},
+        'training': {
+            'run_name': 'test_run',
+            'use_d_vector_file': True,
+            'd_vector_file': [],
+            'eval_split_max_size': 10,
+            'eval_split_size': 0.1,
+            'use_emotion_embedding': True,
+            'batch_size': 2,
+            'eval_batch_size': 2,
+            'num_loader_workers': 0,
+            'epochs': 1,
+            'learning_rate': 1e-5,
+            'save_step': 100,
+            'max_text_len': 250,
+            'skip_train_epoch': False,
+            'use_speaker_weighted_sampler': False,
+            'use_language_weighted_sampler': False,
+            'min_audio_len': 24000,
+            'max_audio_len': 24000 * 10,
+            'text_cleaners': ['multilingual_cleaners'],
+            'use_phonemes': True,
+            'use_precomputed_embeddings': True,
+            'use_speaker_embedding': True,
+            'use_multi_lingual': True,
+            'use_pretrained_lang_embeddings': False,
+        },
+        'model': {
+            'type': 'vecl',
+            'ser_model_name': 'dummy-ser-model',
+            'use_emotion_consistency_loss': False,
+        },
+        's3': {
+            'bucket_name': 'dummy-bucket',
+            'emotion_embeddings_key': 's3_emotions.pth',
+            'speaker_embeddings_key': 's3_speakers.pth',
+            'checkpoint_prefix_yourtts': 'checkpoints/yourtts',
+            'checkpoint_prefix_vecl': 'checkpoints/vecl',
+            'cml_tts_checkpoint_key': 'checkpoints/cml_tts.pth',
+        },
+        'wandb': None,
+        'datasets': [
+            {
+                'name': 'test_dataset',
+                'path': str(temp_dataset_dir),
+                'meta_file_train': 'metadata.csv',
+            }
+        ],
+    }
+    return OmegaConf.create(config_dict)

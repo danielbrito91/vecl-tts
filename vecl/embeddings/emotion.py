@@ -1,7 +1,4 @@
-"""
-Emotion embedding computation utilities for VECL-TTS.
-"""
-
+import logging
 import os
 from pathlib import Path
 
@@ -13,6 +10,9 @@ from TTS.config.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 
 from vecl.utils.downloader import download_s3_file
+
+logger = logging.getLogger(__name__)
+
 
 SER_MODEL_NAME = (
     'alefiury/wav2vec2-xls-r-300m-pt-br-spontaneous-speech-emotion-recognition'
@@ -91,18 +91,20 @@ def compute_emotion_embeddings(
     """
     # Attempt to download from S3 if the local file doesn't exist
     if not embeddings_file_path.exists():
-        print(
+        logger.info(
             'Emotion embeddings not found locally. Attempting to download from S3...'
         )
-        download_s3_file(
+        download_success = download_s3_file(
             bucket_name=s3_bucket,
             s3_key=s3_key,
             local_path=embeddings_file_path,
         )
+        if not download_success:
+            logger.warning('Failed to download emotion embeddings from S3.')
 
     # If the file still doesn't exist (e.g., download failed or not in S3), compute them
     if not embeddings_file_path.exists():
-        print('Computing emotion embeddings...')
+        logger.info('Computing emotion embeddings...')
         emotion_embedder = EmotionEmbedding(ser_model_name=ser_model_name)
         all_samples, _ = load_tts_samples(dataset_configs, eval_split=False)
         emotion_embeddings = {}
@@ -118,6 +120,8 @@ def compute_emotion_embeddings(
                 print(f'Failed to process {audio_file}: {e}')
 
         torch.save(emotion_embeddings, embeddings_file_path)
-        print(f'Emotion embeddings saved to: {embeddings_file_path}')
+        logger.info(f'Emotion embeddings saved to: {embeddings_file_path}')
     else:
-        print(f'✔️ Emotion embeddings loaded from: {embeddings_file_path}')
+        logger.info(
+            f'✔️ Emotion embeddings loaded from: {embeddings_file_path}'
+        )
