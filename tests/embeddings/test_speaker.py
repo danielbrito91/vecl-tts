@@ -1,14 +1,13 @@
-"""
-Test cases for speaker embedding functionality.
-"""
-
 from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 
 from vecl.embeddings.speaker import (
+    _compute_embeddings_per_speaker,
+    _embeddings_cover_dataset,
     _get_speaker_manager,
+    _remap_speaker_to_audio_embeddings,
     compute_speaker_embeddings,
 )
 
@@ -38,59 +37,33 @@ def test_get_speaker_manager_files_missing(temp_dataset_dir):
         _get_speaker_manager(speaker_encoder_dir)
 
 
-@patch('vecl.embeddings.speaker._get_speaker_manager')
-@patch('vecl.embeddings.speaker.download_s3_file')
-def test_compute_speaker_embeddings_existing_file_correct_format(
-    mock_download, mock_get_manager, temp_dataset_dir, mock_dataset_configs
-):
-    """Test that the function returns early if a valid embeddings file exists."""
-    embeddings_file = temp_dataset_dir / 'speaker_embeddings.pth'
-    # Create a dummy embeddings file in the correct format (with '#')
-    torch.save(
-        {'audio_001#speaker_001': {'embedding': [1.0]}}, embeddings_file
-    )
-    speaker_encoder_dir = temp_dataset_dir / 'speaker_encoder'
-
-    compute_speaker_embeddings(
-        dataset_configs=mock_dataset_configs,
-        embeddings_file_path=embeddings_file,
-        speaker_encoder_model_dir=speaker_encoder_dir,
-        s3_bucket='dummy-bucket',
-        s3_key='dummy-key',
-    )
-    # Neither download nor computation should be called
-    mock_download.assert_not_called()
-    mock_get_manager.assert_not_called()
-
-
-@patch('vecl.embeddings.speaker.torch.save')
 @patch('vecl.embeddings.speaker.load_tts_samples')
 @patch('vecl.embeddings.speaker._get_speaker_manager')
 @patch('vecl.embeddings.speaker.download_s3_file')
-@patch('vecl.embeddings.speaker.torch.load')
-def test_compute_speaker_embeddings_existing_file_remap(
-    mock_torch_load,
+def test_compute_speaker_embeddings_existing_file_correct_format(
     mock_download,
     mock_get_manager,
     mock_load_samples,
-    mock_torch_save,
     temp_dataset_dir,
     mock_dataset_configs,
     sample_tts_samples,
 ):
-    """Test that an old-format embeddings file is remapped."""
+    """Early-exit when embeddings file already contains all required keys."""
     embeddings_file = temp_dataset_dir / 'speaker_embeddings.pth'
-    speaker_encoder_dir = temp_dataset_dir / 'speaker_encoder'
 
-    # Old format embeddings (keyed by speaker name)
-    old_format_embeddings = {
-        'speaker_001': {'name': 'speaker_001', 'embedding': torch.randn(512)},
-        'speaker_002': {'name': 'speaker_002', 'embedding': torch.randn(512)},
-    }
-    mock_torch_load.return_value = old_format_embeddings
+    # Create embeddings dict with **all** sample keys
+    torch.save(
+        {
+            s['audio_unique_name']: {'embedding': [1.0]}
+            for s in sample_tts_samples
+        },
+        embeddings_file,
+    )
+
+    # Mock dataset samples used for validation
     mock_load_samples.return_value = (sample_tts_samples, None)
-    # Make the file exist
-    embeddings_file.touch()
+
+    speaker_encoder_dir = temp_dataset_dir / 'speaker_encoder'
 
     compute_speaker_embeddings(
         dataset_configs=mock_dataset_configs,
@@ -99,16 +72,10 @@ def test_compute_speaker_embeddings_existing_file_remap(
         s3_bucket='dummy-bucket',
         s3_key='dummy-key',
     )
-    # No download should be attempted since file exists
+
     mock_download.assert_not_called()
-    # No computation should be run
     mock_get_manager.assert_not_called()
-    # Should load samples for remapping and save the new format
     mock_load_samples.assert_called_once()
-    mock_torch_save.assert_called_once()
-    # Check that the saved output has the correct format
-    saved_data = mock_torch_save.call_args[0][0]
-    assert 'audio_001#speaker_001' in saved_data
 
 
 @patch('vecl.embeddings.speaker.torch.save')
@@ -227,3 +194,79 @@ def test_compute_speaker_embeddings_empty_samples(
     call_args = mock_torch_save.call_args[0]
     audio_to_embedding = call_args[0]
     assert len(audio_to_embedding) == 0
+
+
+# ---------------------------------------------------------------------------
+# Validation helper tests
+# ---------------------------------------------------------------------------
+
+
+@patch('vecl.embeddings.speaker.load_tts_samples')
+def test_embeddings_cover_dataset_true(
+    mock_load_samples,
+    temp_dataset_dir,
+    mock_dataset_configs,
+    sample_tts_samples,
+):
+    """Returns True when file contains embeddings for every sample."""
+    emb_path = temp_dataset_dir / 'embeddings.pth'
+    torch.save(
+        {s['audio_unique_name']: {'embedding': 0} for s in sample_tts_samples},
+        emb_path,
+    )
+
+    mock_load_samples.return_value = (sample_tts_samples, None)
+
+    assert _embeddings_cover_dataset(emb_path, mock_dataset_configs) is True
+
+
+@patch('vecl.embeddings.speaker.load_tts_samples')
+def test_embeddings_cover_dataset_false_missing_keys(
+    mock_load_samples,
+    temp_dataset_dir,
+    mock_dataset_configs,
+    sample_tts_samples,
+):
+    """Returns False when at least one key is missing."""
+    emb_path = temp_dataset_dir / 'embeddings.pth'
+    # Only first sample key present
+    torch.save(
+        {sample_tts_samples[0]['audio_unique_name']: {'embedding': 0}},
+        emb_path,
+    )
+
+    mock_load_samples.return_value = (sample_tts_samples, None)
+
+    assert _embeddings_cover_dataset(emb_path, mock_dataset_configs) is False
+
+
+# ---------------------------------------------------------------------------
+# Speaker-level and remap helper tests
+# ---------------------------------------------------------------------------
+
+
+def test_compute_embeddings_per_speaker_calls_encoder(sample_tts_samples):
+    """Ensure one encoder call per unique speaker."""
+    mock_sm = MagicMock()
+    mock_sm.compute_embedding_from_clip.return_value = torch.randn(512)
+
+    speaker_embs = _compute_embeddings_per_speaker(sample_tts_samples, mock_sm)
+
+    # Two unique speakers in fixture
+    assert len(speaker_embs) == 2
+    assert mock_sm.compute_embedding_from_clip.call_count == 2
+
+
+def test_remap_speaker_to_audio_embeddings(sample_tts_samples):
+    """All audio keys should be present after remap."""
+    speaker_embs = {
+        'speaker_001': {'name': 'speaker_001', 'embedding': 0},
+        'speaker_002': {'name': 'speaker_002', 'embedding': 1},
+    }
+
+    audio_embs = _remap_speaker_to_audio_embeddings(
+        speaker_embs, sample_tts_samples
+    )
+
+    expected_keys = {s['audio_unique_name'] for s in sample_tts_samples}
+    assert set(audio_embs.keys()) == expected_keys
