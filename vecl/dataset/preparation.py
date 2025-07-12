@@ -1,7 +1,3 @@
-"""
-Dataset preparation utilities for VECL-TTS.
-"""
-
 import shutil
 from pathlib import Path
 
@@ -16,6 +12,7 @@ def prepare_dataset_configs(
     config: AppConfig,
 ) -> list[BaseDatasetConfig]:
     """Reads the main manifest, splits it by language, and creates dataset configs."""
+
     _download_dataset(config)
     return _split_dataset_by_language(config)
 

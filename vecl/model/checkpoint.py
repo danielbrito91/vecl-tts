@@ -92,7 +92,6 @@ def load_model_for_training(config: AppConfig, dataset_configs: list):
     and model initialization.
     """
     model_strategy = get_model_strategy(config)
-
     restore_path = config.paths.restore_path
 
     if not restore_path.exists():

@@ -35,7 +35,6 @@ def main(cfg: DictConfig) -> None:
     )
     model_strategy = get_model_strategy(config)
 
-    # CLEAN FIX: Ensure d_vector_file is properly set from paths
     if config.training.use_d_vector_file and not config.training.d_vector_file:
         logger.info(
             '🔧 Setting d_vector_file from paths.speaker_embeddings_file'

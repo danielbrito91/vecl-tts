@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import tarfile
 from pathlib import Path
@@ -6,6 +7,8 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import NoCredentialsError
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 def download_from_s3(bucket_name, s3_key, local_path):
@@ -40,9 +43,10 @@ def download_from_s3(bucket_name, s3_key, local_path):
             )
 
         print(f'Successfully downloaded {s3_key} to {dest_path}')
+    except Exception:
+        logger.info(f'Successfully downloaded {s3_key} to {dest_path}')
     except Exception as e:
-        print(f'Error downloading {s3_key}: {e}')
-        raise
+        logger.error(f'Error downloading {s3_key}: {e}')
 
 
 def extract_tar_file(tar_path, extract_path='.'):
@@ -55,15 +59,15 @@ def extract_tar_file(tar_path, extract_path='.'):
     try:
         print(f'Extracting {tar_path} to {extract_path}...')
 
-        # Create extract directory if it doesn't exist
+        logger.info(f'Extracting {tar_path} to {extract_path}...')
         os.makedirs(extract_path, exist_ok=True)
 
         # Auto-detect compression format
         with tarfile.open(tar_path, 'r:*') as tar:
             tar.extractall(path=extract_path)
-        print(f'Successfully extracted {tar_path} to {extract_path}')
+        logger.info(f'Successfully extracted {tar_path} to {extract_path}')
     except Exception as e:
-        print(f'Error extracting {tar_path}: {e}')
+        logger.error(f'Error extracting {tar_path}: {e}')
         raise
 
 
@@ -80,23 +84,25 @@ def download_s3_file(bucket_name: str, s3_key: str, local_path: Path) -> bool:
         bool: True if download was successful, False otherwise.
     """
     if local_path.exists():
-        print(f'✔️ File already exists at {local_path}. Skipping download.')
+        logger.info(
+            f'✔️ File already exists at {local_path}. Skipping download.'
+        )
         return True
 
     try:
         s3 = boto3.client('s3')
-        print(f'⬇️ Downloading {s3_key} from bucket {bucket_name}...')
+        logger.info(f'⬇️ Downloading {s3_key} from bucket {bucket_name}...')
         local_path.parent.mkdir(parents=True, exist_ok=True)
         s3.download_file(bucket_name, s3_key, str(local_path))
-        print(f'✅ Download complete. File saved to {local_path}')
+        logger.info(f'✅ Download complete. File saved to {local_path}')
         return True
     except NoCredentialsError:
-        print(
+        logger.error(
             '❌ S3 credentials not found. Please configure your AWS credentials.'
         )
         return False
     except Exception as e:
-        print(f'❌ An error occurred during S3 download: {e}')
+        logger.error(f'❌ An error occurred during S3 download: {e}')
         return False
 
 
