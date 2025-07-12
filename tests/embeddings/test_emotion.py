@@ -1,7 +1,3 @@
-"""
-Test cases for emotion embedding functionality.
-"""
-
 import os
 from unittest.mock import MagicMock, patch
 
@@ -79,6 +75,7 @@ def test_get_emotion_embedding_basic(
     mock_model,
     mock_audio_load,
     mock_audio_tensor,
+    mock_model_outputs,
 ):
     """Test basic emotion embedding extraction."""
     # Setup mocks
@@ -97,11 +94,7 @@ def test_get_emotion_embedding_basic(
     mock_feature_extractor_instance.return_value = mock_inputs
 
     # Mock model outputs
-    mock_outputs = MagicMock()
-    mock_outputs.hidden_states = [
-        torch.randn(1, 100, 1024)
-    ]  # Last hidden state
-    mock_model_instance.return_value = mock_outputs
+    mock_model_instance.return_value = mock_model_outputs
 
     # Initialize and test
     emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
@@ -118,7 +111,7 @@ def test_get_emotion_embedding_basic(
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
 def test_get_emotion_embedding_resampling(
-    mock_feature_extractor, mock_model, mock_audio_load
+    mock_feature_extractor, mock_model, mock_audio_load, mock_model_outputs
 ):
     """Test emotion embedding with audio resampling."""
     # Setup mocks
@@ -138,9 +131,7 @@ def test_get_emotion_embedding_resampling(
     mock_feature_extractor_instance.return_value = mock_inputs
 
     # Mock model outputs
-    mock_outputs = MagicMock()
-    mock_outputs.hidden_states = [torch.randn(1, 100, 1024)]
-    mock_model_instance.return_value = mock_outputs
+    mock_model_instance.return_value = mock_model_outputs
 
     # Test - should handle resampling internally
     emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
@@ -167,7 +158,7 @@ def test_get_emotion_embedding_resampling(
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
 def test_get_emotion_embedding_stereo_to_mono(
-    mock_feature_extractor, mock_model, mock_audio_load
+    mock_feature_extractor, mock_model, mock_audio_load, mock_model_outputs
 ):
     """Test emotion embedding with stereo audio conversion to mono."""
     # Setup mocks
@@ -186,9 +177,7 @@ def test_get_emotion_embedding_stereo_to_mono(
     mock_feature_extractor_instance.return_value = mock_inputs
 
     # Mock model outputs
-    mock_outputs = MagicMock()
-    mock_outputs.hidden_states = [torch.randn(1, 100, 1024)]
-    mock_model_instance.return_value = mock_outputs
+    mock_model_instance.return_value = mock_model_outputs
 
     # Test - should convert stereo to mono
     emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
@@ -272,7 +261,7 @@ def test_compute_emotion_embeddings_success(
     )
 
     # Verify embeddings were computed for each audio file
-    assert mock_emotion_embedder.get_emotion_embedding.call_count == 3
+    assert mock_emotion_embedder.get_emotion_embedding.call_count == 5
 
     # Verify torch.save was called
     mock_torch_save.assert_called_once()
@@ -281,10 +270,12 @@ def test_compute_emotion_embeddings_success(
     saved_path = call_args[1]
 
     # Verify the emotion_embeddings mapping
-    assert len(emotion_embeddings) == 3
-    assert 'audio_001.wav' in emotion_embeddings
-    assert 'audio_002.wav' in emotion_embeddings
-    assert 'audio_003.wav' in emotion_embeddings
+    assert len(emotion_embeddings) == 5
+    for sample in sample_tts_samples:
+        relative_path = os.path.relpath(
+            sample['audio_file'], sample['root_path']
+        )
+        assert relative_path in emotion_embeddings
     assert saved_path == embeddings_file
 
 
@@ -311,7 +302,7 @@ def test_compute_emotion_embeddings_with_errors(
 
     # Mock embedding computation with some failures
     def mock_get_embedding_with_error(audio_file):
-        if 'audio_001' in audio_file:
+        if 'coraaa-486-00000' in audio_file:
             raise Exception('Failed to process audio_001')
         return torch.randn(1, 1024)
 
@@ -334,10 +325,10 @@ def test_compute_emotion_embeddings_with_errors(
     emotion_embeddings = call_args[0]
 
     # Should only have embeddings for audio_002 and audio_003 (audio_001 failed)
-    assert len(emotion_embeddings) == 2
-    assert 'audio_002.wav' in emotion_embeddings
-    assert 'audio_003.wav' in emotion_embeddings
-    assert 'audio_001.wav' not in emotion_embeddings
+    assert len(emotion_embeddings) == 4
+    assert 'audio/coraaa-904-00001.wav' in emotion_embeddings
+    assert 'audio/coraaa-874-00002.wav' in emotion_embeddings
+    assert 'audio/coraaa-486-00000.wav' not in emotion_embeddings
 
 
 def test_compute_emotion_embeddings_empty_samples(
@@ -374,7 +365,7 @@ def test_compute_emotion_embeddings_empty_samples(
 
 
 @patch('vecl.embeddings.emotion.download_s3_file')
-@patch('vecl.embeddings.emotion.os.path.relpath')
+@patch('vecl.embeddings.emotion.os.path.relpath', side_effect=os.path.relpath)
 @patch('vecl.embeddings.emotion.torch.save')
 @patch('vecl.embeddings.emotion.load_tts_samples')
 @patch('vecl.embeddings.emotion.EmotionEmbedding')
@@ -398,11 +389,6 @@ def test_relative_path_computation(
         1, 1024
     )
 
-    # Mock relative path computation
-    mock_relpath.side_effect = lambda audio_file, root_path: os.path.basename(
-        audio_file
-    )
-
     # Call function
     compute_emotion_embeddings(
         dataset_configs=mock_dataset_configs,
@@ -413,11 +399,29 @@ def test_relative_path_computation(
     )
 
     # Verify relative path was computed for each sample
-    assert mock_relpath.call_count == 3
+    assert mock_relpath.call_count == 5
     expected_calls = [
-        (('/path/to/audio_001.wav', '/path/to')),
-        (('/path/to/audio_002.wav', '/path/to')),
-        (('/path/to/audio_003.wav', '/path/to')),
+        (
+            'data/processed_24k/audio/coraaa-486-00000.wav',
+            'data/processed_24k',
+        ),
+        (
+            'data/processed_24k/audio/coraaa-904-00001.wav',
+            'data/processed_24k',
+        ),
+        (
+            'data/processed_24k/audio/coraaa-874-00002.wav',
+            'data/processed_24k',
+        ),
+        (
+            'data/processed_24k/audio/coraaa-717-00003.wav',
+            'data/processed_24k',
+        ),
+        (
+            'data/processed_24k/audio/coraaa-529-00999.wav',
+            'data/processed_24k',
+        ),
     ]
-    actual_calls = [call[0] for call in mock_relpath.call_args_list]
-    assert actual_calls == expected_calls
+
+    actual_calls = mock_relpath.call_args_list
+    assert [c.args for c in actual_calls] == expected_calls

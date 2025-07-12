@@ -1,28 +1,27 @@
-"""
-Test cases for dataset preparation functionality.
-"""
-
-import shutil
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
 from TTS.config.shared_configs import BaseDatasetConfig
 
-from vecl.dataset.preparation import prepare_dataset_configs
+from vecl.dataset.preparation import (
+    _download_dataset,
+    _split_dataset_by_language,
+    prepare_dataset_configs,
+)
 
 
 def test_prepare_configs_with_existing_metadata(
-    temp_dataset_dir, sample_metadata_df, create_metadata_file
+    temp_dataset_dir,
+    sample_metadata_df,
+    create_metadata_file,
+    create_app_config,
 ):
     """Test dataset config preparation when metadata file exists locally."""
     # Create metadata file
     create_metadata_file(temp_dataset_dir, sample_metadata_df)
 
-    # Call the function
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    configs = prepare_dataset_configs(create_app_config())
 
     # Verify results
     assert isinstance(configs, list)
@@ -52,14 +51,15 @@ def test_prepare_configs_with_existing_metadata(
 
 
 def test_speaker_name_combination(
-    temp_dataset_dir, sample_metadata_df, create_metadata_file
+    temp_dataset_dir,
+    sample_metadata_df,
+    create_metadata_file,
+    create_app_config,
 ):
     """Test that speaker names are correctly combined."""
     create_metadata_file(temp_dataset_dir, sample_metadata_df)
 
-    prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    prepare_dataset_configs(create_app_config())
 
     # Check one of the language-specific files for speaker naming
     en_metadata = temp_dataset_dir / 'metadata_en.csv'
@@ -76,76 +76,80 @@ def test_speaker_name_combination(
     assert all(speaker in expected_speakers for speaker in actual_speakers)
 
 
-def test_missing_metadata_no_s3(temp_dataset_dir):
-    """Test error when metadata doesn't exist and no S3 bucket provided."""
-    with pytest.raises(FileNotFoundError) as exc_info:
-        prepare_dataset_configs(
-            dataset_base_path=temp_dataset_dir, metadata_file='nonexistent.csv'
-        )
+@pytest.mark.parametrize(
+    'entrypoint', [prepare_dataset_configs, _download_dataset]
+)
+def test_missing_metadata_no_s3_param(
+    temp_dataset_dir, create_app_config, entrypoint
+):
+    """Missing metadata without S3 details should raise FileNotFoundError for both entrypoints."""
 
-    assert 'Metadata file not found' in str(exc_info.value)
-    assert 'no S3 bucket provided' in str(exc_info.value)
+    cfg = create_app_config(metadata_file='absent.csv')
+    with pytest.raises(FileNotFoundError, match='no S3 bucket provided'):
+        entrypoint(cfg)
 
 
+@pytest.mark.parametrize(
+    ('entrypoint', 'expect_configs'),
+    [
+        (prepare_dataset_configs, True),
+        (_download_dataset, False),
+    ],
+)
 @patch('vecl.dataset.preparation.download_from_s3')
 @patch('vecl.dataset.preparation.extract_tar_file')
-def test_s3_download_success(
+def test_s3_download_success_param(
     mock_extract,
     mock_download,
     temp_dataset_dir,
     sample_metadata_df,
     create_metadata_file,
+    create_app_config,
+    entrypoint,
+    expect_configs,
 ):
-    """Test successful S3 download when metadata doesn't exist locally."""
-    # Setup mocks
+    """Verify S3 download success for both public and internal helper entrypoints."""
+
     mock_download.return_value = None
-    mock_extract.return_value = None
 
-    # Create the metadata file in a subdirectory (simulating extraction)
-    extracted_dir = temp_dataset_dir / 'processed_24k'
-    extracted_dir.mkdir()
-    create_metadata_file(extracted_dir, sample_metadata_df)
-
-    # Mock the file movement that happens after extraction
-    def mock_extract_side_effect(tar_path, extract_path):
-        # Simulate moving files from extracted_dir to base_path
-        metadata_source = extracted_dir / 'metadata.csv'
-        metadata_dest = temp_dataset_dir / 'metadata.csv'
-        if metadata_source.exists():
-            shutil.move(str(metadata_source), str(metadata_dest))
-        extracted_dir.rmdir()
-
-    mock_extract.side_effect = mock_extract_side_effect
-
-    # Call function
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir,
-        metadata_file='metadata.csv',
-        s3_bucket_name='test-bucket',
+    # After extraction the metadata should be placed in the dataset root
+    mock_extract.side_effect = lambda *_: create_metadata_file(
+        temp_dataset_dir, sample_metadata_df
     )
 
-    # Verify S3 functions were called
+    cfg = create_app_config(s3_bucket_name='test-bucket')
+    result = entrypoint(cfg)
+
     mock_download.assert_called_once()
     mock_extract.assert_called_once()
 
-    # Verify configs were created
-    assert len(configs) == 2
+    if expect_configs:
+        assert isinstance(result, list)
+        assert len(result) == 2
 
 
+@pytest.mark.parametrize(
+    'entrypoint', [prepare_dataset_configs, _download_dataset]
+)
 @patch('vecl.dataset.preparation.download_from_s3')
-def test_s3_download_failure(mock_download, temp_dataset_dir):
-    """Test handling of S3 download failure."""
+def test_s3_download_failure_param(
+    mock_download,
+    temp_dataset_dir,
+    create_app_config,
+    entrypoint,
+):
+    """Ensure both entrypoints propagate S3 download errors."""
+
     mock_download.side_effect = Exception('S3 download failed')
 
+    cfg = create_app_config(s3_bucket_name='test-bucket')
     with pytest.raises(Exception, match='S3 download failed'):
-        prepare_dataset_configs(
-            dataset_base_path=temp_dataset_dir,
-            metadata_file='metadata.csv',
-            s3_bucket_name='test-bucket',
-        )
+        entrypoint(cfg)
 
 
-def test_single_language_dataset(temp_dataset_dir, create_metadata_file):
+def test_single_language_dataset(
+    temp_dataset_dir, create_metadata_file, create_app_config
+):
     """Test dataset with only one language."""
     single_lang_df = pd.DataFrame({
         'filename': ['audio_001.wav', 'audio_002.wav'],
@@ -158,15 +162,15 @@ def test_single_language_dataset(temp_dataset_dir, create_metadata_file):
 
     create_metadata_file(temp_dataset_dir, single_lang_df)
 
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    configs = prepare_dataset_configs(create_app_config())
 
     assert len(configs) == 1
     assert configs[0].language == 'en'
 
 
-def test_empty_metadata(temp_dataset_dir, create_metadata_file):
+def test_empty_metadata(
+    temp_dataset_dir, create_metadata_file, create_app_config
+):
     """Test handling of empty metadata file."""
     empty_df = pd.DataFrame(
         columns=[
@@ -181,14 +185,14 @@ def test_empty_metadata(temp_dataset_dir, create_metadata_file):
 
     create_metadata_file(temp_dataset_dir, empty_df)
 
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    configs = prepare_dataset_configs(create_app_config())
 
     assert configs == []
 
 
-def test_missing_gender_column(temp_dataset_dir, create_metadata_file):
+def test_missing_gender_column(
+    temp_dataset_dir, create_metadata_file, create_app_config
+):
     """Test handling when speaker_gender column is missing."""
     df_no_gender = pd.DataFrame({
         'filename': ['audio_001.wav', 'audio_002.wav'],
@@ -201,9 +205,7 @@ def test_missing_gender_column(temp_dataset_dir, create_metadata_file):
 
     create_metadata_file(temp_dataset_dir, df_no_gender)
 
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    configs = prepare_dataset_configs(create_app_config())
 
     # Should still work, just without gender in speaker names
     assert len(configs) == 2
@@ -228,6 +230,7 @@ def test_custom_s3_key(
     temp_dataset_dir,
     sample_metadata_df,
     create_metadata_file,
+    create_app_config,
 ):
     """Test using custom S3 data key."""
 
@@ -239,10 +242,7 @@ def test_custom_s3_key(
 
     custom_key = 'custom/path/data.tar.gz'
     prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir,
-        metadata_file='metadata.csv',
-        s3_bucket_name='test-bucket',
-        s3_data_key=custom_key,
+        create_app_config(s3_bucket_name='test-bucket', s3_key=custom_key)
     )
 
     # Verify custom key was used
@@ -252,7 +252,9 @@ def test_custom_s3_key(
     )  # Second argument should be the S3 key
 
 
-def test_whitespace_handling(temp_dataset_dir, create_metadata_file):
+def test_whitespace_handling(
+    temp_dataset_dir, create_metadata_file, create_app_config
+):
     """Test that whitespace in CSV data is properly stripped."""
     df_with_whitespace = pd.DataFrame({
         'filename': [' audio_001.wav ', ' audio_002.wav '],
@@ -265,12 +267,48 @@ def test_whitespace_handling(temp_dataset_dir, create_metadata_file):
 
     create_metadata_file(temp_dataset_dir, df_with_whitespace)
 
-    configs = prepare_dataset_configs(
-        dataset_base_path=temp_dataset_dir, metadata_file='metadata.csv'
-    )
+    configs = prepare_dataset_configs(create_app_config())
 
     # Check that language values were stripped properly
     languages = [config.language for config in configs]
     assert 'en' in languages
     assert 'pt-br' in languages
     assert ' en ' not in languages  # Should not have whitespace
+
+
+def test_split_dataset_by_language_helper(
+    temp_dataset_dir,
+    sample_metadata_df,
+    create_metadata_file,
+    create_app_config,
+):
+    """Ensure `_split_dataset_by_language` correctly splits and writes per-language metadata."""
+
+    # Arrange: create main metadata file
+    create_metadata_file(temp_dataset_dir, sample_metadata_df)
+    cfg = create_app_config()
+
+    # Act
+    configs = _split_dataset_by_language(cfg)
+
+    # Assert
+    languages = {c.language for c in configs}
+    assert languages == {'en', 'pt-br'}
+    for lang in languages:
+        assert (temp_dataset_dir / f'metadata_{lang}.csv').exists()
+
+
+def test_download_dataset_with_existing_metadata(
+    temp_dataset_dir,
+    sample_metadata_df,
+    create_metadata_file,
+    create_app_config,
+):
+    """`_download_dataset` should be a no-op when metadata already exists locally."""
+
+    # Arrange
+    create_metadata_file(temp_dataset_dir, sample_metadata_df)
+    cfg = create_app_config()
+
+    # Act & Assert – should not raise
+    _download_dataset(cfg)

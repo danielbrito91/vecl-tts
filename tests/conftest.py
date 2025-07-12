@@ -92,6 +92,15 @@ def mock_audio_tensor():
 
 
 @pytest.fixture
+def mock_model_outputs():
+    """Create a mock model output object with hidden states."""
+    mock_outputs = MagicMock()
+    # Last hidden state of shape (batch_size, sequence_length, hidden_size)
+    mock_outputs.hidden_states = [torch.randn(1, 100, 1024)]
+    return mock_outputs
+
+
+@pytest.fixture
 def create_app_config(temp_dataset_dir):
     """Factory to build minimal AppConfig-like stubs for dataset tests."""
 

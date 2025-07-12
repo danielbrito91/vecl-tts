@@ -113,7 +113,7 @@ def test_compute_speaker_embeddings_success(
     mock_download.assert_called_once()
     mock_load_samples.assert_called_once()
     mock_get_manager.assert_called_once_with(speaker_encoder_dir)
-    assert mock_speaker_manager.compute_embedding_from_clip.call_count == 2
+    assert mock_speaker_manager.compute_embedding_from_clip.call_count == 5
     mock_torch_save.assert_called_once()
 
 
@@ -139,8 +139,8 @@ def test_compute_speaker_embeddings_with_errors(
     mock_get_manager.return_value = mock_speaker_manager
 
     def mock_compute_embedding_with_error(audio_files):
-        if any('audio_001' in f or 'audio_003' in f for f in audio_files):
-            raise Exception('Failed to process speaker_001')
+        if any('coraaa-486-00000' in f for f in audio_files):
+            raise Exception('Failed to process speaker')
         return torch.randn(512)
 
     mock_speaker_manager.compute_embedding_from_clip.side_effect = (
@@ -158,9 +158,15 @@ def test_compute_speaker_embeddings_with_errors(
     mock_torch_save.assert_called_once()
     call_args = mock_torch_save.call_args[0]
     audio_to_embedding = call_args[0]
-    assert len(audio_to_embedding) == 1
-    assert 'audio_002#speaker_002' in audio_to_embedding
-    assert 'audio_001#speaker_001' not in audio_to_embedding
+    assert len(audio_to_embedding) == 4
+    assert (
+        'multilingual_custom_pt-br#audio/coraaa-904-00001'
+        in audio_to_embedding
+    )
+    assert (
+        'multilingual_custom_pt-br#audio/coraaa-486-00000'
+        not in audio_to_embedding
+    )
 
 
 @patch('vecl.embeddings.speaker.torch.save')
@@ -240,11 +246,6 @@ def test_embeddings_cover_dataset_false_missing_keys(
     assert _embeddings_cover_dataset(emb_path, mock_dataset_configs) is False
 
 
-# ---------------------------------------------------------------------------
-# Speaker-level and remap helper tests
-# ---------------------------------------------------------------------------
-
-
 def test_compute_embeddings_per_speaker_calls_encoder(sample_tts_samples):
     """Ensure one encoder call per unique speaker."""
     mock_sm = MagicMock()
@@ -253,15 +254,21 @@ def test_compute_embeddings_per_speaker_calls_encoder(sample_tts_samples):
     speaker_embs = _compute_embeddings_per_speaker(sample_tts_samples, mock_sm)
 
     # Two unique speakers in fixture
-    assert len(speaker_embs) == 2
-    assert mock_sm.compute_embedding_from_clip.call_count == 2
+    assert len(speaker_embs) == 5
+    assert mock_sm.compute_embedding_from_clip.call_count == 5
 
 
 def test_remap_speaker_to_audio_embeddings(sample_tts_samples):
     """All audio keys should be present after remap."""
     speaker_embs = {
-        'speaker_001': {'name': 'speaker_001', 'embedding': 0},
-        'speaker_002': {'name': 'speaker_002', 'embedding': 1},
+        s['speaker_name']: {'name': s['speaker_name'], 'embedding': i}
+        for i, s in enumerate(
+            sorted(
+                sample_tts_samples,
+                key=lambda x: x['speaker_name'],
+                reverse=True,
+            )
+        )
     }
 
     audio_embs = _remap_speaker_to_audio_embeddings(
