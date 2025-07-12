@@ -93,9 +93,6 @@ def load_model_for_training(config: AppConfig, dataset_configs: list):
     """
     model_strategy = get_model_strategy(config)
 
-    # ------------------------------------------------------------------
-    # Ensure the pretrained checkpoint directory is populated.
-    # ------------------------------------------------------------------
     restore_path = config.paths.restore_path
 
     if not restore_path.exists():

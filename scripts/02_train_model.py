@@ -121,7 +121,7 @@ def main(cfg: DictConfig) -> None:
 
     trainer = UnifiedTrainer(
         args=trainer_args,
-        config=model.config,  # The config object is now attached to the model
+        config=model.config,
         output_path=str(output_path),
         model=model,
         train_samples=train_samples,

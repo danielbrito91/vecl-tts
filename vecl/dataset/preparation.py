@@ -16,11 +16,16 @@ def prepare_dataset_configs(
     config: AppConfig,
 ) -> list[BaseDatasetConfig]:
     """Reads the main manifest, splits it by language, and creates dataset configs."""
+    _download_dataset(config)
+    return _split_dataset_by_language(config)
+
+
+def _download_dataset(config: AppConfig) -> None:
     dataset_base_path = config.paths.dataset_path
     metadata_file = config.paths.metadata_file
     main_metadata_path = dataset_base_path / metadata_file
     s3_bucket_name = config.s3.bucket_name if config.s3 else None
-    s3_data_key = 'tts/cml-tts/processed_24k.tar.gz'  # TODO: Move to config
+    s3_data_key = config.s3.data_key if config.s3 else None
 
     if not main_metadata_path.exists():
         if s3_bucket_name:
@@ -54,6 +59,9 @@ def prepare_dataset_configs(
                 f'Metadata file not found at {main_metadata_path} and no S3 bucket provided'
             )
 
+
+def _split_dataset_by_language(config: AppConfig) -> list[BaseDatasetConfig]:
+    main_metadata_path = config.paths.dataset_path / config.paths.metadata_file
     main_df = pd.read_csv(main_metadata_path, sep='|').apply(
         lambda x: x.str.strip() if x.dtype == 'object' else x
     )
@@ -61,7 +69,7 @@ def prepare_dataset_configs(
     dataset_configs = []
     for lang in main_df['language'].dropna().unique():
         lang_df = main_df[main_df['language'] == lang].copy()
-        temp_meta_path = dataset_base_path / f'metadata_{lang}.csv'
+        temp_meta_path = config.paths.dataset_path / f'metadata_{lang}.csv'
         lang_df['speaker_name_combined'] = lang_df.apply(
             lambda r: f'{r["dataset"]}_{r["speaker_code"]}_{r.get("speaker_gender", "")}'.rstrip(
                 '_'
@@ -82,7 +90,7 @@ def prepare_dataset_configs(
                 formatter='brspeech',
                 dataset_name=f'multilingual_custom_{lang}',
                 meta_file_train=str(temp_meta_path.name),
-                path=str(dataset_base_path),
+                path=str(config.paths.dataset_path),
                 language=lang,
             )
         )

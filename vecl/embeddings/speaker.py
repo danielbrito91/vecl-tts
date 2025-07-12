@@ -1,7 +1,3 @@
-"""
-Speaker embedding computation utilities for VECL-TTS.
-"""
-
 from collections import defaultdict
 from pathlib import Path
 
