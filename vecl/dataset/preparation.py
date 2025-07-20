@@ -13,11 +13,11 @@ def prepare_dataset_configs(
 ) -> list[BaseDatasetConfig]:
     """Reads the main manifest, splits it by language, and creates dataset configs."""
 
-    _download_dataset(config)
+    _download_dataset_from_s3(config)
     return _split_dataset_by_language(config)
 
 
-def _download_dataset(config: AppConfig) -> None:
+def _download_dataset_from_s3(config: AppConfig) -> None:
     dataset_base_path = config.paths.dataset_path
     metadata_file = config.paths.metadata_file
     main_metadata_path = dataset_base_path / metadata_file

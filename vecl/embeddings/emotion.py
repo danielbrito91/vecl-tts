@@ -78,7 +78,7 @@ class EmotionEmbedding:
         return pooled_embedding
 
 
-def compute_emotion_embeddings(
+def get_emotion_embeddings(
     dataset_configs: list[BaseDatasetConfig],
     embeddings_file_path: Path,
     ser_model_name: str,
@@ -102,26 +102,29 @@ def compute_emotion_embeddings(
         if not download_success:
             logger.warning('Failed to download emotion embeddings from S3.')
 
-    # If the file still doesn't exist (e.g., download failed or not in S3), compute them
     if not embeddings_file_path.exists():
         logger.info('Computing emotion embeddings...')
-        emotion_embedder = EmotionEmbedding(ser_model_name=ser_model_name)
-        all_samples, _ = load_tts_samples(dataset_configs, eval_split=False)
-        emotion_embeddings = {}
-        for sample in tqdm(all_samples, desc='Computing Emotion Embeddings'):
-            try:
-                audio_file = sample['audio_file']
-                relative_path = os.path.relpath(
-                    audio_file, sample['root_path']
-                )
-                embedding = emotion_embedder.get_emotion_embedding(audio_file)
-                emotion_embeddings[relative_path] = embedding.cpu()
-            except Exception as e:
-                print(f'Failed to process {audio_file}: {e}')
-
-        torch.save(emotion_embeddings, embeddings_file_path)
-        logger.info(f'Emotion embeddings saved to: {embeddings_file_path}')
-    else:
-        logger.info(
-            f'✔️ Emotion embeddings loaded from: {embeddings_file_path}'
+        _compute_emotion_embeddings(
+            dataset_configs, embeddings_file_path, ser_model_name
         )
+
+
+def _compute_emotion_embeddings(
+    dataset_configs: list[BaseDatasetConfig],
+    embeddings_file_path: Path,
+    ser_model_name: str,
+):
+    emotion_embedder = EmotionEmbedding(ser_model_name=ser_model_name)
+    all_samples, _ = load_tts_samples(dataset_configs, eval_split=False)
+    emotion_embeddings = {}
+    for sample in tqdm(all_samples, desc='Computing Emotion Embeddings'):
+        try:
+            audio_file = sample['audio_file']
+            relative_path = os.path.relpath(audio_file, sample['root_path'])
+            embedding = emotion_embedder.get_emotion_embedding(audio_file)
+            emotion_embeddings[relative_path] = embedding.cpu()
+        except Exception as e:
+            print(f'Failed to process {audio_file}: {e}')
+
+    torch.save(emotion_embeddings, embeddings_file_path)
+    logger.info(f'Emotion embeddings saved to: {embeddings_file_path}')

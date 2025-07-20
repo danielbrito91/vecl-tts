@@ -9,12 +9,9 @@ from TTS.tts.datasets import load_tts_samples
 
 from vecl.config import AppConfig
 from vecl.dataset.preparation import prepare_dataset_configs
-from vecl.embeddings import (
-    compute_emotion_embeddings,
-    compute_speaker_embeddings,
-)
-from vecl.model.checkpoint import load_model_for_training
-from vecl.model.strategy.factory import get_model_strategy
+from vecl.embeddings.emotion import get_emotion_embeddings
+from vecl.embeddings.speaker import get_speaker_embeddings
+from vecl.model.loader import load_model_for_training
 from vecl.training.trainer import UnifiedTrainer
 
 # Set up logging
@@ -33,7 +30,6 @@ def main(cfg: DictConfig) -> None:
     config = AppConfig.model_validate(
         OmegaConf.to_container(cfg, resolve=True)
     )
-    model_strategy = get_model_strategy(config)
 
     if config.training.use_d_vector_file and not config.training.d_vector_file:
         logger.info(
@@ -64,7 +60,7 @@ def main(cfg: DictConfig) -> None:
     # --- 3. Compute Speaker Embeddings (D-Vectors) ---
     if config.training.use_d_vector_file:
         logger.info('Computing speaker embeddings (d-vectors)...')
-        compute_speaker_embeddings(
+        get_speaker_embeddings(
             dataset_configs=dataset_configs,
             embeddings_file_path=config.paths.speaker_embeddings_file,
             speaker_encoder_model_dir=config.paths.speaker_encoder_model_dir,
@@ -80,7 +76,7 @@ def main(cfg: DictConfig) -> None:
     # --- 4. Compute Emotion Embeddings ---
     if config.training.use_emotion_embedding and config.model.type == 'vecl':
         logger.info('Computing emotion embeddings...')
-        compute_emotion_embeddings(
+        get_emotion_embeddings(
             dataset_configs=dataset_configs,
             embeddings_file_path=config.paths.emotion_embeddings_file,
             ser_model_name=config.model.ser_model_name,
@@ -101,9 +97,7 @@ def main(cfg: DictConfig) -> None:
 
     # --- 6. Initialize Trainer ---
     logger.info('Initializing trainer...')
-    trainer_args = (
-        TrainerArgs()
-    )  # We can populate this from config later if needed
+    trainer_args = TrainerArgs()
 
     # Prepare S3 arguments only if S3 is configured
     s3_kwargs = {}
@@ -112,7 +106,10 @@ def main(cfg: DictConfig) -> None:
             'S3 configuration found. Setting up S3 arguments for trainer.'
         )
         s3_kwargs['s3_bucket'] = config.s3.bucket_name
-        s3_kwargs['s3_prefix'] = model_strategy.get_checkpoint_prefix_s3()
+        if config.model.type == 'vecl':
+            s3_kwargs['s3_prefix'] = config.s3.checkpoint_prefix_vecl
+        else:
+            s3_kwargs['s3_prefix'] = config.s3.checkpoint_prefix_yourtts
     else:
         logger.info(
             'No S3 configuration found. Trainer will run in local-only mode.'

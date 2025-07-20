@@ -13,7 +13,7 @@ from vecl.utils.downloader import download_s3_file
 logger = logging.getLogger(__name__)
 
 
-def compute_speaker_embeddings(
+def get_speaker_embeddings(
     dataset_configs: list[BaseDatasetConfig],
     embeddings_file_path: Path,
     speaker_encoder_model_dir: Path,
@@ -44,6 +44,18 @@ def compute_speaker_embeddings(
         return
 
     # Fallback – compute from scratch
+    _compute_speaker_embeddings(
+        dataset_configs,
+        embeddings_file_path,
+        speaker_encoder_model_dir,
+    )
+
+
+def _compute_speaker_embeddings(
+    dataset_configs: list[BaseDatasetConfig],
+    embeddings_file_path: Path,
+    speaker_encoder_model_dir: Path,
+):
     speaker_manager = _get_speaker_manager(speaker_encoder_model_dir)
 
     all_samples, _ = load_tts_samples(dataset_configs, eval_split=False)

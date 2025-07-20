@@ -1,17 +1,9 @@
-"""
-Unified data utilities for VECL-TTS.
-This module provides a simple interface to all data processing functionality,
-handling configuration extraction and calling the underlying modules.
-"""
-
 from TTS.config.shared_configs import BaseDatasetConfig
 
 from vecl.config import AppConfig
-from vecl.dataset import VeclDataset
 
 # Import dataset utilities
 from vecl.dataset import prepare_dataset_configs as _prepare_dataset_configs
-from vecl.embeddings import EmotionEmbedding
 from vecl.embeddings import (
     compute_emotion_embeddings as _compute_emotion_embeddings,
 )
@@ -20,15 +12,8 @@ from vecl.embeddings import (
 from vecl.embeddings import (
     compute_speaker_embeddings as _compute_speaker_embeddings,
 )
-from vecl.evaluation import emotion_consistency
-from vecl.model.checkpoint import load_model_for_inference, patch_state_dict
-from vecl.model.config import VeclConfig
-from vecl.model.layers import EmotionProj
-from vecl.model.loss import VeclGeneratorLoss
-from vecl.model.vecl import Vecl
 
 # Import preprocessing utilities
-from vecl.preprocessing import AudioPreprocessor, TextPreprocessor
 
 
 # Configuration-aware wrapper functions
@@ -65,27 +50,3 @@ def compute_emotion_embeddings(
         s3_bucket=config.s3.bucket_name,
         s3_key=config.s3.emotion_embeddings_key,
     )
-
-
-# Export all public interfaces
-__all__ = [
-    # Preprocessing
-    'TextPreprocessor',
-    'AudioPreprocessor',
-    # Embeddings
-    'compute_speaker_embeddings',
-    'compute_emotion_embeddings',
-    'EmotionEmbedding',
-    # Evaluation
-    'emotion_consistency',
-    # Dataset
-    'prepare_dataset_configs',
-    'VeclDataset',
-    # Model Components
-    'Vecl',
-    'VeclConfig',
-    'VeclGeneratorLoss',
-    'EmotionProj',
-    'load_model_for_inference',
-    'patch_state_dict',
-]
