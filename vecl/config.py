@@ -133,6 +133,9 @@ class S3Config(BaseModel):
     """Configuration for AWS S3 integration."""
 
     bucket_name: str = Field(..., description='Name of the S3 bucket.')
+    data_key: str = Field(
+        ..., description='S3 key for the dataset.'
+    )
     checkpoint_prefix_yourtts: str = Field(
         ..., description='S3 prefix for YourTTS checkpoints.'
     )
@@ -175,6 +178,24 @@ class ModelConfig(BaseModel):
     )
 
 
+class DownloadConfig(BaseModel):
+    """Configuration for downloading artifacts."""
+
+    artifacts: List[str] = Field(
+        ['all'],
+        description='Which artifacts to download',
+    )
+    backend: str = Field('s3', description='Storage backend')
+    s3_bucket: Optional[str] = Field(
+        None,
+        description='S3 bucket name (uses S3_BUCKET_NAME env var if not provided)',
+    )
+    local_mirror: Optional[Path] = Field(
+        None, description='Path to local mirror (for local backend)'
+    )
+    list: bool = Field(False, description='List artifacts and exit')
+
+
 class AppConfig(BaseModel):
     """Root configuration for the entire application."""
 
@@ -184,3 +205,4 @@ class AppConfig(BaseModel):
     s3: Optional[S3Config] = None
     wandb: Optional[WandbConfig] = None
     model: ModelConfig
+    download: DownloadConfig

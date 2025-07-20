@@ -1,0 +1,6 @@
+artifacts: 
+  - 'all'
+backend: 's3'
+s3_bucket: null
+local_mirror: null
+list: false 

@@ -7,4 +7,5 @@ defaults:
   - s3: default
   - wandb: default
   - model: vecl # Default model for training
+  - download: default
   - _self_ 

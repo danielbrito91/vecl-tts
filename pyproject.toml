@@ -53,11 +53,11 @@ lint = 'ruff check . && ruff check . --diff'
 format = 'ruff check . --fix && ruff format .'
 
 # Download tasks
-download = 'python scripts/download.py'
-download-all = 'task download --artifacts all'
-download-dataset = 'task download --artifacts dataset'
-download-models = 'task download --artifacts models'
-download-embeddings = 'task download --artifacts embeddings'
+download = 'uv run -m scripts.download'
+download-all = "uv run -m scripts.download download.artifacts='[\"all\"]'"
+download-dataset = "uv run -m scripts.download download.artifacts='[\"dataset\"]'"
+download-models = "uv run -m scripts.download download.artifacts='[\"models\"]'"
+download-embeddings = "uv run -m scripts.download download.artifacts='[\"embeddings\"]'"
 
 # Training tasks
 train = 'python scripts/train.py'

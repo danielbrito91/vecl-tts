@@ -54,7 +54,7 @@ class DownloadManager:
 
         if not cache_file.exists():
             logger.info(
-                f'Downloading {artifact.name} from {self.backend.get_name()}'
+                f'Downloading {artifact.name} from {self.storage_backend.get_name()}'
             )
             downloaded = self.storage_backend.download(
                 artifact.remote_path, cache_file
