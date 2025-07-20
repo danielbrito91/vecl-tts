@@ -59,8 +59,9 @@ download-dataset = "uv run -m scripts.download download.artifacts='[\"dataset\"]
 download-models = "uv run -m scripts.download download.artifacts='[\"models\"]'"
 download-embeddings = "uv run -m scripts.download download.artifacts='[\"embeddings\"]'"
 
+
 # Training tasks
-train = 'python scripts/train.py'
+train = 'uv run -m scripts.train_model'
 train-vecl = 'task train model=vecl'
 train-yourtts = 'task train model=yourtts'
 train-local = 'task train --config-name local_test'

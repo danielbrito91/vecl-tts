@@ -82,6 +82,32 @@ class ModelLoader(ABC):
                     language_ids_path
                 )
 
+        # Make speaker encoder paths absolute
+        checkpoint_dir = self.config.paths.restore_path.parent
+        if (
+            hasattr(model_config, 'model_args')
+            and hasattr(model_config.model_args, 'speaker_encoder_config_path')
+            and model_config.model_args.speaker_encoder_config_path
+        ):
+            se_config_path = Path(
+                model_config.model_args.speaker_encoder_config_path
+            )
+            model_config.model_args.speaker_encoder_config_path = str(
+                checkpoint_dir / se_config_path.name
+            )
+
+        if (
+            hasattr(model_config, 'model_args')
+            and hasattr(model_config.model_args, 'speaker_encoder_model_path')
+            and model_config.model_args.speaker_encoder_model_path
+        ):
+            se_model_path = Path(
+                model_config.model_args.speaker_encoder_model_path
+            )
+            model_config.model_args.speaker_encoder_model_path = str(
+                checkpoint_dir / se_model_path.name
+            )
+
         # Speaker embeddings
         if self.config.training.use_d_vector_file:
             model_config.model_args.d_vector_file = [

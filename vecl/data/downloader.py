@@ -54,7 +54,7 @@ class DownloadManager:
 
         if not cache_file.exists():
             logger.info(
-                f'Downloading {artifact.name} from {self.storage_backend.get_name()}'
+                f'Downloading {artifact.name} from {self.storage_backend.get_name()} to {cache_file}'
             )
             downloaded = self.storage_backend.download(
                 artifact.remote_path, cache_file
@@ -63,7 +63,7 @@ class DownloadManager:
                 raise RuntimeError(f'Failed to download {artifact.name}')
 
         if artifact.extract and artifact.extract_to:
-            logger.info(f'Extracting {artifact.name}')
+            logger.info(f'Extracting {artifact.name} from {cache_file} to {artifact.extract_to}')
             self._extract(cache_file, artifact.extract_to)
         else:
             artifact.local_path.parent.mkdir(parents=True, exist_ok=True)
