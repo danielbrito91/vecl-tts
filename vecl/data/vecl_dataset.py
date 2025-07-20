@@ -1,7 +1,3 @@
-"""
-Custom dataset class for VECL-TTS.
-"""
-
 import os
 
 import torch

@@ -10,9 +10,9 @@ from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.utils.audio import AudioProcessor
 
-from vecl.model.config import VeclArgs, VeclConfig
-from vecl.model.layers import EmotionProj
-from vecl.model.loss import VeclGeneratorLoss
+from vecl.models.config import VeclArgs, VeclConfig
+from vecl.models.layers import EmotionProj
+from vecl.models.loss import VeclGeneratorLoss
 
 
 class Vecl(Vits):
@@ -404,7 +404,7 @@ class Vecl(Vits):
             if len(samples) < 8:
                 config.max_text_len = 10_000
 
-            from vecl.dataset.vecl_dataset import (
+            from vecl.data.vecl_dataset import (
                 VeclDataset,
             )
 

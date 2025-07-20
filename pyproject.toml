@@ -52,5 +52,23 @@ post_test = 'coverage html'
 lint = 'ruff check . && ruff check . --diff'
 format = 'ruff check . --fix && ruff format .'
 
+# Download tasks
+download = 'python scripts/download.py'
+download-all = 'task download --artifacts all'
+download-dataset = 'task download --artifacts dataset'
+download-models = 'task download --artifacts models'
+download-embeddings = 'task download --artifacts embeddings'
+
+# Training tasks
+train = 'python scripts/train.py'
+train-vecl = 'task train model=vecl'
+train-yourtts = 'task train model=yourtts'
+train-local = 'task train --config-name local_test'
+
+# Utility tasks
+clean = 'rm -rf outputs/ __pycache__ .pytest_cache .coverage'
+clean-cache = 'rm -rf ~/.vecl_cache/'
+setup = 'uv sync && mkdir -p data/processed_24k models outputs'
+
 [tool.pytest.ini_options]
 pythonpath = ['.']

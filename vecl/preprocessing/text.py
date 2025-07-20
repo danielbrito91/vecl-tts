@@ -1,7 +1,3 @@
-"""
-Text preprocessing utilities for VECL-TTS.
-"""
-
 import re
 
 import pandas as pd

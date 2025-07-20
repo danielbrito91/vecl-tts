@@ -1,57 +1,101 @@
-# VECL-TTS: Voice Emotion and Cross-Lingual Transfer
 
-This repository contains the implementation for VECL-TTS, a system for voice cloning with emotion and cross-lingual transfer capabilities.
+# VECL-TTS: Voice and Emotion Controllable TTS
 
-## Prerequisites
+A simplified implementation of VECL-TTS for Brazilian Portuguese.
 
-On macOS, you may need to install LLVM for some dependencies to build correctly. You can do this with Homebrew:
-
-```bash
-brew install llvm
-```
-
-## How to Train
-
-The main training script is `scripts/train_model.py`, which uses [Hydra](https://hydra.cc/) for configuration management. You can run different training configurations and override parameters from the command line.
-
-### Running a Local Test
-
-For a quick test run that uses minimal resources and doesn't log to external services like W&B or S3, use the `local_test` configuration. The command you used is correct:
+## Quick Start
 
 ```bash
-uv run -m scripts.train_model --config-name local_test
+# Install dependencies
+uv sync
+
+# Download all required files
+uv run task download-all
+
+# Train VECL model
+uv run task train-vecl
+
+# Train YourTTS model
+uv run task train-yourtts
 ```
-You can also run it by pointing to the script file directly:
+
+## Project Structure
+
+The project is organized into the following directories:
+
+```plaintext
+.
+├── .env.example       # Environment variable template
+├── pyproject.toml     # Project configuration and dependencies
+├── configs/           # Hydra configuration files
+├── docs/              # Project documentation
+├── scripts/           # Automation scripts (download, train)
+├── tests/             # Test suite
+└── vecl/              # Core application source code
+    ├── config.py      # Configuration loading
+    ├── data/          # Data loading and preparation
+    ├── embeddings/    # Speaker and emotion embedding
+    ├── evaluation/    # Model evaluation scripts
+    ├── preprocessing/ # Text and audio preprocessing
+    └── training/      # Model training logic
+```
+
+## Available Tasks
+
+Run `uv run task -l` to see all available tasks:
+
+- **Testing**: `test`, `lint`, `format`
+- **Downloads**: `download-all`, `download-dataset`, `download-models`
+- **Training**: `train-vecl`, `train-yourtts`, `train-local`
+- **Utilities**: `clean`, `setup`, `list-artifacts`
+
+## Configuration
+
+The system uses Hydra for configuration. Key files:
+
+- `configs/config.yaml` - Main configuration
+- `configs/model/` - Model-specific configs
+- `configs/paths/` - Path configurations
+
+Override any config value from command line:
+
 ```bash
-uv run python scripts/train_model.py --config-name local_test
+uv run task train model=vecl training.batch_size=8 training.learning_rate=1e-4
 ```
-This is ideal for debugging and verifying that the training loop runs without errors.
 
-### Running the Default Training
+## Storage Backends
 
-To run the default training configuration (which uses the `vecl` model), simply execute the script:
+The download system supports multiple backends:
 
 ```bash
-uv run python scripts/train_model.py
+# S3 (default)
+uv run task download --backend s3
+
+# Local mirror
+uv run task download --backend local --local-mirror /path/to/mirror
+
+# List what's available
+uv run task list-artifacts
 ```
 
-### Overriding Configuration Parameters
+## Environment Variables
 
-You can override any parameter from the configuration files directly on the command line.
+Create a `.env` file from the `.env.example` template to set your local environment variables.
 
-**Example 1: Switching to the `yourtts` model**
+- `S3_BUCKET_NAME`: S3 bucket for downloads/uploads.
+- `WANDB_ENTITY`: Weights & Biases entity for experiment tracking.
+- `OUTPUT_PATH`: Directory to save model outputs.
+- `DATASET_PATH`: Path to the dataset.
+
+## Development
+
 ```bash
-uv run python scripts/train_model.py model=yourtts
+# Run tests
+uv run task test
+
+# Format code
+uv run task format
+
+# Clean outputs
+uv run task clean
 ```
-
-**Example 2: Changing training parameters**
-You can modify any value from `configs/training/default.yaml` or other config files.
-```bash
-uv run python scripts/train_model.py training.learning_rate=1e-4 training.epochs=10
-
-# Disable speaker embedding
-uv run python scripts/train_model.py training.use_speaker_embedding=false
-```
-
-The output of each run will be saved in the directory specified by `paths.output_path`, inside a uniquely named folder based on the model and timestamp (e.g., `outputs/vecl_2023-10-27_19-00-00/`).
-

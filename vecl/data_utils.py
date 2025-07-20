@@ -3,7 +3,7 @@ from TTS.config.shared_configs import BaseDatasetConfig
 from vecl.config import AppConfig
 
 # Import dataset utilities
-from vecl.dataset import prepare_dataset_configs as _prepare_dataset_configs
+from vecl.data import prepare_dataset_configs as _prepare_dataset_configs
 from vecl.embeddings import (
     compute_emotion_embeddings as _compute_emotion_embeddings,
 )

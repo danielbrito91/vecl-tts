@@ -1,7 +1,3 @@
-"""
-Audio preprocessing utilities for VECL-TTS.
-"""
-
 import os
 import shutil
 import subprocess

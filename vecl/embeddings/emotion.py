@@ -9,8 +9,6 @@ from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 from TTS.config.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 
-from vecl.utils.downloader import download_s3_file
-
 logger = logging.getLogger(__name__)
 
 
@@ -78,38 +76,7 @@ class EmotionEmbedding:
         return pooled_embedding
 
 
-def get_emotion_embeddings(
-    dataset_configs: list[BaseDatasetConfig],
-    embeddings_file_path: Path,
-    ser_model_name: str,
-    s3_bucket: str,
-    s3_key: str,
-):
-    """
-    Computes emotion embeddings for each audio file, attempting to download
-    them from S3 first.
-    """
-    # Attempt to download from S3 if the local file doesn't exist
-    if not embeddings_file_path.exists():
-        logger.info(
-            'Emotion embeddings not found locally. Attempting to download from S3...'
-        )
-        download_success = download_s3_file(
-            bucket_name=s3_bucket,
-            s3_key=s3_key,
-            local_path=embeddings_file_path,
-        )
-        if not download_success:
-            logger.warning('Failed to download emotion embeddings from S3.')
-
-    if not embeddings_file_path.exists():
-        logger.info('Computing emotion embeddings...')
-        _compute_emotion_embeddings(
-            dataset_configs, embeddings_file_path, ser_model_name
-        )
-
-
-def _compute_emotion_embeddings(
+def compute_emotion_embeddings(
     dataset_configs: list[BaseDatasetConfig],
     embeddings_file_path: Path,
     ser_model_name: str,

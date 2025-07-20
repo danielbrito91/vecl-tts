@@ -1,115 +1,67 @@
-import glob
 import logging
-import os
-import shutil
 from pathlib import Path
+from typing import Optional
 
 import boto3
 from trainer import Trainer
 
+from vecl.config import S3Config
+
 logger = logging.getLogger(__name__)
 
 
-class UnifiedTrainer(Trainer):
+class VeclTrainer(Trainer):
     """
     Custom Trainer that uploads model checkpoints and configs to an S3 bucket after saving locally.
     """
 
-    def __init__(self, *args, **kwargs):
-        self.s3_bucket = kwargs.pop('s3_bucket', None)
-        self.s3_prefix = kwargs.pop('s3_prefix', 'checkpoints')
-        self.dataset_path = kwargs.pop('dataset_path', None)
-
-        if self.s3_bucket and boto3:
-            logger.info(
-                f'✅ S3 Uploader is active. Checkpoints will be sent to s3://{self.s3_bucket}/{self.s3_prefix}'
-            )
-            self.s3_client = boto3.client('s3')
-        else:
-            logger.info(
-                'ℹ️  S3 Uploader is disabled. No bucket name provided or boto3 is not installed.'
-            )
-            self.s3_client = None
+    def __init__(self, *args, s3_config: Optional[S3Config] = None, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def _copy_embedding_files_if_needed(self):
-        """Copy embedding files from dataset directory to run directory if they don't exist."""
-        if not self.dataset_path:
-            return
+        self.s3_config = s3_config
+        self.s3_client = None
 
-        run_output_dir = Path(self.output_path)
-        dataset_dir = Path(self.dataset_path)
-
-        # Files that might need copying from dataset to run directory
-        embedding_files = ['speakers.pth', 'emotions.pth']
-
-        for filename in embedding_files:
-            run_file = run_output_dir / filename
-            dataset_file = dataset_dir / filename
-
-            if not run_file.exists() and dataset_file.exists():
-                try:
-                    shutil.copy2(dataset_file, run_file)
-                    logger.info(
-                        f"    > 📁 Copied '{filename}' from dataset to run directory"
-                    )
-                except Exception as e:
-                    logger.error(f"    > ⚠️ Failed to copy '{filename}': {e}")
+        if s3_config:
+            try:
+                self.s3_client = boto3.client('s3')
+                prefix = (
+                    'vecl'
+                    if 'vecl' in str(kwargs.get('output_path', ''))
+                    else 'yourtts'
+                )
+                self.s3_prefix = f'tts/{prefix}/checkpoints'
+                logger.info(
+                    f'S3 uploads enabled: s3://{s3_config.bucket_name}/{self.s3_prefix}'
+                )
+            except Exception as e:
+                logger.warning(f'S3 setup failed: {e}. Uploads disabled.')
+                self.s3_client = None
 
     def save_checkpoint(self, *args, **kwargs):
+        """Save checkpoint and optionally upload to S3."""
         checkpoint_path = super().save_checkpoint(*args, **kwargs)
-        if not self.s3_client:
-            if checkpoint_path:
-                logger.info('   > ℹ️ S3 upload skipped.')
-            return checkpoint_path
 
-        if not checkpoint_path:
-            logger.info(
-                '   > 🕵️ Checkpoint path not returned. Searching manually...'
-            )
-            checkpoint_files = glob.glob(
-                f'{self.output_path}/checkpoint_*.pth'
-            )
-            if not checkpoint_files:
-                logger.error('   > ❌ No checkpoint files found for upload.')
-                return None
-            checkpoint_path = max(checkpoint_files, key=os.path.getmtime)
-            logger.info(f'   > ✅ Latest checkpoint found: {checkpoint_path}')
-
-        # Copy embedding files if they don't exist in the run directory
-        self._copy_embedding_files_if_needed()
-
-        run_output_dir = Path(self.output_path)
-        run_name = run_output_dir.name
-        s3_run_path = f'{self.s3_prefix}/{run_name}'
-
-        logger.info(f'\n--- 🚀 Attempting S3 sync for: {s3_run_path} ---')
-        try:
-            files_to_upload = [
-                'config.json',
-                'language_ids.json',
-                'speakers.pth',
-                'emotions.pth',
-                Path(checkpoint_path).name,
-            ]
-            logger.info(f'    > Files to upload: {files_to_upload}')
-            for filename in files_to_upload:
-                local_file = run_output_dir / filename
-                if local_file.exists():
-                    s3_key = f'{s3_run_path}/{filename}'
-                    logger.info(
-                        f"    > Uploading '{filename}' to '{s3_key}'..."
-                    )
-                    self.s3_client.upload_file(
-                        str(local_file), self.s3_bucket, s3_key
-                    )
-                    logger.info(f"    > Upload of '{filename}' complete.")
-                else:
-                    logger.warning(
-                        f"    > WARNING: Local file '{filename}' not found. Skipping upload."
-                    )
-            logger.info('    ✓ S3 sync finished successfully.')
-        except Exception as e:
-            logger.error(f'    ❌ CRITICAL ERROR during S3 upload: {e}')
+        if checkpoint_path and self.s3_client and self.s3_config:
+            self._upload_to_s3(checkpoint_path)
 
         return checkpoint_path
+
+    def _upload_to_s3(self, checkpoint_path):
+        """Upload checkpoint and config to S3."""
+        try:
+            run_name = Path(self.output_path).name
+            files = [
+                Path(checkpoint_path),
+                Path(self.output_path) / 'config.json',
+            ]
+
+            for file in files:
+                if file.exists():
+                    s3_key = f'{self.s3_prefix}/{run_name}/{file.name}'
+                    logger.info(f'Uploading {file.name} to S3...')
+                    self.s3_client.upload_file(
+                        str(file), self.s3_config.bucket_name, s3_key
+                    )
+
+        except Exception as e:
+            logger.error(f'S3 upload failed: {e}')

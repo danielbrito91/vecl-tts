@@ -1,8 +1,3 @@
-"""
-Training utilities for VECL-TTS.
-"""
-
-
 def patch_state_dict(state_dict):
     """
     Patches a state_dict from an older Coqui TTS version to match the new format

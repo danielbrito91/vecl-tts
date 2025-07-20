@@ -8,50 +8,10 @@ from TTS.config.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 from TTS.tts.utils.speakers import SpeakerManager
 
-from vecl.utils.downloader import download_s3_file
-
 logger = logging.getLogger(__name__)
 
 
-def get_speaker_embeddings(
-    dataset_configs: list[BaseDatasetConfig],
-    embeddings_file_path: Path,
-    speaker_encoder_model_dir: Path,
-    s3_bucket: str,
-    s3_key: str,
-):
-    """
-    Ensure `embeddings_file_path` exists in a single, canonical format
-    (keyed by ``audio_unique_name`` → embedding dict). If the file is
-    already present locally **or** after an optional S3 download, the
-    function returns early. Otherwise it computes the embeddings from
-    scratch and writes the file.
-    """
-    if not embeddings_file_path.exists():
-        logger.info(
-            'Speaker embeddings not found locally. Attempting to download from S3...'
-        )
-        download_success = download_s3_file(
-            bucket_name=s3_bucket,
-            s3_key=s3_key,
-            local_path=embeddings_file_path,
-        )
-        if not download_success:
-            logger.warning('Failed to download embeddings from S3.')
-
-    if _embeddings_cover_dataset(embeddings_file_path, dataset_configs):
-        logger.info('✔️ Existing embeddings cover all audio clips.')
-        return
-
-    # Fallback – compute from scratch
-    _compute_speaker_embeddings(
-        dataset_configs,
-        embeddings_file_path,
-        speaker_encoder_model_dir,
-    )
-
-
-def _compute_speaker_embeddings(
+def compute_speaker_embeddings(
     dataset_configs: list[BaseDatasetConfig],
     embeddings_file_path: Path,
     speaker_encoder_model_dir: Path,
@@ -73,7 +33,7 @@ def _compute_speaker_embeddings(
     logger.info(f'Embeddings saved to: {embeddings_file_path}')
 
 
-def _embeddings_cover_dataset(
+def embeddings_cover_dataset(
     embeddings_file_path: Path, dataset_configs: list[BaseDatasetConfig]
 ) -> bool:
     """Return ``True`` iff *all* dataset samples have an embedding entry.

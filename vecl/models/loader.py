@@ -8,8 +8,8 @@ from TTS.tts.models import setup_model
 from TTS.tts.utils.languages import LanguageManager
 
 from vecl.config import AppConfig
-from vecl.model.layers import EmotionProj
-from vecl.model.vecl import Vecl
+from vecl.models.layers import EmotionProj
+from vecl.models.vecl import Vecl
 from vecl.training.utils import patch_state_dict
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,6 @@ class ModelLoader(ABC):
 
     def load_for_training(self, dataset_configs: list):
         """Load model for training."""
-        self._ensure_checkpoint_exists()
         model_config = self._create_training_config()
         model_config.datasets = dataset_configs
 
@@ -42,29 +41,6 @@ class ModelLoader(ABC):
         self._load_inference_weights(model, checkpoint_path)
 
         return model.eval().to(device), cfg
-
-    def _ensure_checkpoint_exists(self):
-        """Download checkpoint if not found locally."""
-        if self.config.paths.restore_path.exists():
-            return
-
-        if not self.config.s3:
-            raise ValueError(
-                'Checkpoint only available on S3. Please set s3 configuration.'
-            )
-
-        logger.info('Downloading checkpoint from S3...')
-        from vecl.utils.downloader import download_s3_file, extract_tar_file
-
-        download_s3_file(
-            self.config.s3.bucket_name,
-            self.config.s3.cml_tts_checkpoint_key,
-            self.config.paths.local_tar_path,
-        )
-        extract_tar_file(
-            self.config.paths.local_tar_path,
-            self.config.paths.pretrained_checkpoint_dir,
-        )
 
     def _create_training_config(self):
         """Create config for training."""

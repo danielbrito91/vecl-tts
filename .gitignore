@@ -10,9 +10,9 @@ wheels/
 # Virtual environments
 .venv
 
-data
+data/*
 notebooks/*
-models
+models/*
 outputs
 speaker_encoder_model
 wandb/*

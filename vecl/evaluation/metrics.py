@@ -1,7 +1,3 @@
-"""
-Evaluation metrics for VECL-TTS model performance assessment.
-"""
-
 import os
 
 import torch
