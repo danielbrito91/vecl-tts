@@ -141,7 +141,7 @@ def create_download_manager(
         backend = LocalBackend(backend_config['base_path'])
 
     # Create manager and register artifacts
-    dm = DownloadManager(backend=backend)
+    dm = DownloadManager(storage_backend=backend)
     for artifact in get_default_artifacts(config).values():
         dm.register(artifact)
 
