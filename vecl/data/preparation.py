@@ -10,9 +10,12 @@ logger = logging.getLogger(__name__)
 
 class DatasetPreparer:
     def __init__(
-        self, dataset_path: Path, metadata_file: str = 'metadata.csv'
+        self,
+        dataset_path: Path,
+        sub_dir_name: str,
+        metadata_file: str = 'metadata.csv',
     ):
-        self.dataset_path = Path(dataset_path)
+        self.dataset_path = Path(dataset_path) / Path(sub_dir_name)
         self.metadata_file = metadata_file
         self.metadata_path = self.dataset_path / metadata_file
 

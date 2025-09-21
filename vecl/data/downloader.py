@@ -62,8 +62,14 @@ class DownloadManager:
             if not downloaded:
                 raise RuntimeError(f'Failed to download {artifact.name}')
 
-        if artifact.extract and artifact.extract_to:
-            logger.info(f'Extracting {artifact.name} from {cache_file} to {artifact.extract_to}')
+        if (
+            artifact.extract
+            and artifact.extract_to
+            and not artifact.extract_to.exists()
+        ):
+            logger.info(
+                f'Extracting {artifact.name} from {cache_file} to {artifact.extract_to}'
+            )
             self._extract(cache_file, artifact.extract_to)
         else:
             artifact.local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,25 +94,24 @@ class DownloadManager:
 
 
 def get_default_artifacts(config: AppConfig) -> Dict[str, Artifact]:
+    sub_dir_name = Path(Path(config.s3.data_key).stem).stem
     return {
         'dataset': Artifact(
             name='dataset',
-            remote_path=config.s3.data_key
-            if config.s3
-            else 'tts/cml-tts/processed_24k.tar.gz',
-            local_path=config.paths.dataset_path / config.paths.metadata_file,
+            remote_path=config.s3.data_key,
+            local_path=config.paths.dataset_path
+            / sub_dir_name
+            / config.paths.metadata_file,
             extract=True,
             extract_to=config.paths.dataset_path,
             required=True,
         ),
         'yourtts_checkpoint': Artifact(
             name='yourtts_checkpoint',
-            remote_path=config.s3.cml_tts_checkpoint_key
-            if config.s3
-            else 'tts/cml-tts/checkpoints_yourtts_cml_tts_dataset.tar.bz',
+            remote_path=config.s3.cml_tts_checkpoint_key,
             local_path=config.paths.restore_path,
             extract=True,
-            extract_to=config.paths.pretrained_checkpoint_dir.parent,
+            extract_to=config.paths.pretrained_checkpoint_dir,
             required=True,
         ),
         'speaker_embeddings': Artifact(

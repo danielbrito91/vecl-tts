@@ -133,9 +133,7 @@ class S3Config(BaseModel):
     """Configuration for AWS S3 integration."""
 
     bucket_name: str = Field(..., description='Name of the S3 bucket.')
-    data_key: str = Field(
-        ..., description='S3 key for the dataset.'
-    )
+    data_key: str = Field(..., description='S3 key for the dataset.')
     checkpoint_prefix_yourtts: str = Field(
         ..., description='S3 prefix for YourTTS checkpoints.'
     )

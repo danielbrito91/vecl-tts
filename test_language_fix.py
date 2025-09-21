@@ -9,8 +9,8 @@ from hydra import compose, initialize
 
 # Import the refactored modules
 from vecl.config import AppConfig
-from vecl.model.config import VeclConfig
-from vecl.model.vecl import Vecl
+from vecl.models.config import VeclConfig
+from vecl.models.vecl import Vecl
 
 
 def test_language_manager():

@@ -1,102 +1,117 @@
 #!/usr/bin/env python3
 """
-Debug script to examine speaker embeddings file and understand key structure.
+Debug script to inspect speaker embeddings file format and find mismatched keys.
 """
 
-import sys
 from pathlib import Path
 
 import torch
 
 
-def examine_embeddings_file(embeddings_path):
-    """Examine the structure of a speaker embeddings file."""
-    try:
-        embeddings = torch.load(embeddings_path, map_location='cpu')
+def inspect_embeddings(embeddings_file_path: str):
+    """Inspect the structure of the speaker embeddings file."""
+    print(f'🔍 Inspecting speaker embeddings file: {embeddings_file_path}')
 
-        print(f'📁 Embeddings file: {embeddings_path}')
-        print(f'📊 Total embeddings: {len(embeddings)}')
-        print(f'🔑 Type: {type(embeddings)}')
+    try:
+        embeddings = torch.load(
+            embeddings_file_path, map_location=torch.device('cpu')
+        )
+        print('✅ Successfully loaded embeddings file')
+        print(f'📊 Total number of entries: {len(embeddings)}')
 
         # Show first 10 keys
         keys = list(embeddings.keys())
-        print('\n🔍 First 10 keys:')
+        print('\n🔑 First 10 keys:')
         for i, key in enumerate(keys[:10]):
             print(f'  {i + 1:2d}. {key}')
 
+        # Look for the specific failing key
+        failing_key = 'multilingual_custom_en#audio/0019_000223'
+        print(f"\n🎯 Looking for failing key: '{failing_key}'")
+
+        if failing_key in embeddings:
+            print('✅ Found exact match!')
+        else:
+            print('❌ Exact match not found. Looking for similar keys...')
+
+            # Find keys that contain parts of the failing key
+            similar_keys = []
+            filename_part = '0019_000223'
+            dataset_part = 'multilingual_custom_en'
+
+            for key in keys:
+                if filename_part in key:
+                    similar_keys.append(key)
+
+            if similar_keys:
+                print(
+                    f"🔍 Found {len(similar_keys)} keys containing '{filename_part}':"
+                )
+                for key in similar_keys[:5]:  # Show first 5
+                    print(f'  - {key}')
+                if len(similar_keys) > 5:
+                    print(f'  ... and {len(similar_keys) - 5} more')
+            else:
+                print(f"❌ No keys found containing '{filename_part}'")
+
+            # Check what keys exist for this dataset
+            dataset_keys = [k for k in keys if dataset_part in k]
+            print(
+                f"\n📋 Found {len(dataset_keys)} keys for '{dataset_part}' dataset"
+            )
+            if dataset_keys:
+                print('Sample keys from this dataset:')
+                for key in dataset_keys[:5]:
+                    print(f'  - {key}')
+                if len(dataset_keys) > 5:
+                    print(f'  ... and {len(dataset_keys) - 5} more')
+
         # Show key patterns
-        print('\n📈 Key patterns analysis:')
-        extensions = set()
-        prefixes = set()
-        separators = set()
+        print('\n📝 Key patterns analysis:')
+        patterns = {}
+        for key in keys[:50]:  # Analyze first 50 keys
+            if '#audio/' in key:
+                dataset_part = key.split('#audio/')[0]
+                patterns[dataset_part] = patterns.get(dataset_part, 0) + 1
 
-        for key in keys[:100]:  # Sample first 100 keys
-            if '.' in key:
-                ext = key.split('.')[-1]
-                extensions.add(ext)
+        print('Dataset prefixes found:')
+        for pattern, count in patterns.items():
+            print(f'  - {pattern}: {count} files')
 
-            if '/' in key:
-                prefix = key.split('/')[0]
-                prefixes.add(prefix)
-
-            for char in ['#', '_', '-', '/']:
-                if char in key:
-                    separators.add(char)
-
-        print(f'  Extensions found: {sorted(extensions)}')
-        print(f'  Prefixes found: {sorted(prefixes)}')
-        print(f'  Separators found: {sorted(separators)}')
-
-        # Show embedding structure
-        if keys:
-            first_key = keys[0]
-            first_embedding = embeddings[first_key]
-            print('\n🎯 First embedding structure:')
-            print(f'  Key: {first_key}')
-            print(f'  Type: {type(first_embedding)}')
-
-            if isinstance(first_embedding, dict):
-                print(f'  Dict keys: {list(first_embedding.keys())}')
-                if 'embedding' in first_embedding:
-                    emb = first_embedding['embedding']
-                    print(
-                        f'  Embedding shape: {emb.shape if hasattr(emb, "shape") else "N/A"}'
-                    )
-                    print(f'  Embedding type: {type(emb)}')
-            elif hasattr(first_embedding, 'shape'):
-                print(f'  Shape: {first_embedding.shape}')
-                print(f'  Type: {type(first_embedding)}')
-
-        return True
+        # Check format of embeddings
+        sample_key = keys[0]
+        sample_embedding = embeddings[sample_key]
+        print('\n📋 Sample embedding format:')
+        print(f'  Key: {sample_key}')
+        print(f'  Type: {type(sample_embedding)}')
+        if isinstance(sample_embedding, dict):
+            print(f'  Dict keys: {list(sample_embedding.keys())}')
+            if 'embedding' in sample_embedding:
+                print(
+                    f'  Embedding shape: {sample_embedding["embedding"].shape}'
+                )
+        else:
+            print(f'  Shape: {sample_embedding.shape}')
 
     except Exception as e:
         print(f'❌ Error loading embeddings file: {e}')
-        return False
 
 
 if __name__ == '__main__':
-    # Try different common paths
-    potential_paths = [
-        'data/processed_24k/speaker_embeddings_patch.pth',
-        'data/processed_24k/speakers.pth',
-        '${DATASET_PATH}/speakers.pth',
-        '${DATASET_PATH}/speaker_embeddings_patch.pth',
+    # Look for speakers.pth in common locations
+    possible_paths = [
+        'speakers.pth',
+        '/mnt/sagemaker-nvme/tts-dataset/speakers.pth',
+        '/mnt/sagemaker-nvme/tts-checkpoints-multilingual/speakers.pth',
     ]
 
-    # If path provided as argument
-    if len(sys.argv) > 1:
-        potential_paths.insert(0, sys.argv[1])
-
-    success = False
-    for path_str in potential_paths:
-        path = Path(path_str)
-        if path.exists():
-            print(f'🎯 Found embeddings file: {path}')
-            success = examine_embeddings_file(path)
+    for path in possible_paths:
+        if Path(path).exists():
+            inspect_embeddings(path)
             break
-
-    if not success:
-        print('❌ No embeddings file found. Please provide path as argument:')
+    else:
         print(
-            'python debug_embeddings.py /path/to/your/speaker_embeddings.pth'
+            '❌ Could not find speakers.pth file in any of the expected locations:'
         )
+        for path in possible_paths:
+            print(f'  - {path}')

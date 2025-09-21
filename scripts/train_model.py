@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import hydra
 from dotenv import load_dotenv
@@ -43,7 +44,7 @@ def ensure_artifacts(config: AppConfig):
         try:
             dm.get(name)
         except Exception as e:
-            logger.info(f'{name} not found, will compute: {e}')
+            logger.info(f'{name} not found, will compute if needed: {e}')
 
 
 def prepare_data(config: AppConfig):
@@ -53,6 +54,7 @@ def prepare_data(config: AppConfig):
     # Prepare dataset configs
     preparer = DatasetPreparer(
         dataset_path=config.paths.dataset_path,
+        sub_dir_name=Path(Path(config.s3.data_key).stem).stem,
         metadata_file=config.paths.metadata_file,
     )
     dataset_configs = preparer.prepare_configs()
