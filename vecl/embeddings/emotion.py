@@ -1,9 +1,13 @@
 import logging
 import os
+from abc import abstractmethod
+from asyncio import AbstractChildWatcher
 from pathlib import Path
+from typing import Union
 
 import torch
 import torchaudio
+from speechbrain.inference.interfaces import foreign_class
 from tqdm import tqdm
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 from TTS.config.shared_configs import BaseDatasetConfig
@@ -12,13 +16,17 @@ from TTS.tts.datasets import load_tts_samples
 logger = logging.getLogger(__name__)
 
 
-SER_MODEL_NAME = (
-    'alefiury/wav2vec2-xls-r-300m-pt-br-spontaneous-speech-emotion-recognition'
-)
+class BaseEmotionEmbedding(AbstractChildWatcher):
+    @abstractmethod
+    def get_emotion_embedding(self, audio_path) -> torch.Tensor:
+        pass
 
 
-class EmotionEmbedding:
-    def __init__(self, ser_model_name: str):
+class HFEmotionEmbedding(BaseEmotionEmbedding):
+    def __init__(
+        self,
+        ser_model_name: str = 'alefiury/wav2vec2-xls-r-300m-pt-br-spontaneous-speech-emotion-recognition',
+    ):
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
@@ -76,12 +84,53 @@ class EmotionEmbedding:
         return pooled_embedding
 
 
+class SpeechBrainEmotionEmbedding(BaseEmotionEmbedding):
+    def __init__(
+        self,
+        ser_model_name: str = 'speechbrain/emotion-recognition-wav2vec2-IEMOCAP',
+    ):
+        self.model = foreign_class(
+            source=ser_model_name,
+            pymodule_file='custom_interface.py',
+            classname='CustomEncoderWav2vec2Classifier',
+        )
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
+        self.model.to(self.device)
+
+    def get_emotion_embedding(self, audio_path) -> torch.Tensor:
+        signal = self.model.load_audio(audio_path)
+
+        signal = signal.unsqueeze(0)
+        signal = signal.to(self.model.device)
+
+        wav_lens = torch.tensor([1.0], device=self.model.device)
+
+        self.model.eval()
+        with torch.no_grad():
+            embeddings = self.model.encode_batch(signal, wav_lens=wav_lens)
+
+        embeddings = embeddings.squeeze(0)
+        return embeddings
+
+
+def load_emotion_embedder(
+    ser_model_name: str,
+) -> Union[SpeechBrainEmotionEmbedding, HFEmotionEmbedding]:
+    if ser_model_name.startswith('speechbrain'):
+        return SpeechBrainEmotionEmbedding(ser_model_name=ser_model_name)
+    elif ser_model_name.startswith('alefiury'):
+        return HFEmotionEmbedding(ser_model_name=ser_model_name)
+    else:
+        raise ValueError(f'Invalid SER model name: {ser_model_name}')
+
+
 def compute_emotion_embeddings(
     dataset_configs: list[BaseDatasetConfig],
     embeddings_file_path: Path,
-    ser_model_name: str,
+    emotion_embedder: BaseEmotionEmbedding,
 ):
-    emotion_embedder = EmotionEmbedding(ser_model_name=ser_model_name)
     all_samples, _ = load_tts_samples(dataset_configs, eval_split=False)
     emotion_embeddings = {}
     for sample in tqdm(all_samples, desc='Computing Emotion Embeddings'):
@@ -91,7 +140,7 @@ def compute_emotion_embeddings(
             embedding = emotion_embedder.get_emotion_embedding(audio_file)
             emotion_embeddings[relative_path] = embedding.cpu()
         except Exception as e:
-            print(f'Failed to process {audio_file}: {e}')
+            logger.error(f'Failed to process {audio_file}: {e}')
 
     torch.save(emotion_embeddings, embeddings_file_path)
     logger.info(f'Emotion embeddings saved to: {embeddings_file_path}')

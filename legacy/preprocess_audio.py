@@ -200,8 +200,8 @@ class AudioPreprocessor:
 def main():
     """Main function to process audio files"""
     # Configuration
-    input_folder = 'data/raw/audio/'
-    output_folder = 'data/processed/audio/'
+    input_folder = 'data/raw02/audio/'
+    output_folder = 'data/processed02/audio/'
     target_lufs = -27.0  # Same as VECL-TTS
 
     # Check if input folder exists

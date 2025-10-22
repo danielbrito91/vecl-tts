@@ -7,10 +7,6 @@ import torch
 from tests.fixtures.data import SAMPLE_TTS_SAMPLES as samples
 from vecl.embeddings.speaker import compute_speaker_embeddings
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _write_wav(path: Path, duration_sec: float = 0.2, sr: int = 16000):
     """Write a silent WAV file via stdlib *only* (no external deps)."""
@@ -21,11 +17,6 @@ def _write_wav(path: Path, duration_sec: float = 0.2, sr: int = 16000):
         wf.setframerate(sr)
         silence = (0).to_bytes(2, byteorder='little', signed=True)
         wf.writeframes(silence * n_samples)
-
-
-# ---------------------------------------------------------------------------
-# Integration test
-# ---------------------------------------------------------------------------
 
 
 @patch('vecl.embeddings.speaker._get_speaker_manager')

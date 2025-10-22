@@ -23,7 +23,7 @@ class Artifact:
 
 class StorageBackend(ABC):
     @abstractmethod
-    def download(self, remote_path: str, local_path: Path) -> None:
+    def download(self, remote_path: str, local_path: Path) -> bool:
         pass
 
     @abstractmethod
@@ -36,7 +36,7 @@ class S3StorageBackend(StorageBackend):
         self.bucket_name = bucket_name
         self.client = boto3.client('s3')
 
-    def download(self, remote_path: str, local_path: Path) -> None:
+    def download(self, remote_path: str, local_path: Path) -> bool:
         try:
             response = self.client.head_object(
                 Bucket=self.bucket_name, Key=remote_path

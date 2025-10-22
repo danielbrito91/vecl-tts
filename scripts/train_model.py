@@ -10,7 +10,10 @@ from TTS.tts.datasets import load_tts_samples
 from vecl.config import AppConfig
 from vecl.data.downloader import create_download_manager
 from vecl.data.preparation import DatasetPreparer
-from vecl.embeddings.emotion import compute_emotion_embeddings
+from vecl.embeddings.emotion import (
+    compute_emotion_embeddings,
+    load_emotion_embedder,
+)
 from vecl.embeddings.speaker import (
     compute_speaker_embeddings,
     embeddings_cover_dataset,
@@ -54,7 +57,7 @@ def prepare_data(config: AppConfig):
     # Prepare dataset configs
     preparer = DatasetPreparer(
         dataset_path=config.paths.dataset_path,
-        sub_dir_name=Path(Path(config.s3.data_key).stem).stem,
+        sub_dir_name=config.paths.subdir_name,
         metadata_file=config.paths.metadata_file,
     )
     dataset_configs = preparer.prepare_configs()
@@ -97,10 +100,15 @@ def ensure_embeddings(config: AppConfig, dataset_configs):
     if config.model.type == 'vecl' and config.training.use_emotion_embedding:
         if not config.paths.emotion_embeddings_file.exists():
             logger.info('Computing emotion embeddings...')
+
+            emotion_embedder = load_emotion_embedder(
+                config.model.ser_model_name
+            )
+
             compute_emotion_embeddings(
                 dataset_configs=dataset_configs,
                 embeddings_file_path=config.paths.emotion_embeddings_file,
-                ser_model_name=config.model.ser_model_name,
+                emotion_embedder=emotion_embedder,
             )
 
 
@@ -123,7 +131,7 @@ def main(cfg: DictConfig):
     logger.info(f'Output: {config.paths.output_path}')
 
     # Step 1: Ensure artifacts exist
-    ensure_artifacts(config)
+    # ensure_artifacts(config)
 
     # Step 2: Prepare data
     dataset_configs, train_samples, eval_samples = prepare_data(config)

@@ -31,7 +31,7 @@ class VeclArgs(VitsArgs):
     emotion_embedding_dim: int = 1024
     d_vector_dim: int = 512
     use_emotion_consistency_loss: bool = True
-    emotion_consistency_loss_alpha: float = 1.0
+    emotion_consistency_loss_alpha: float = 9.0
 
     # Language management parameters
     use_language_embedding: bool = True

@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+*.pth
+*.wav
+artifacts/*
+wav2vec2_checkpoints/*
 .DS_Store
 # Virtual environments
 .venv

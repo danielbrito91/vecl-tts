@@ -94,11 +94,16 @@ class DownloadManager:
 
 
 def get_default_artifacts(config: AppConfig) -> Dict[str, Artifact]:
-    sub_dir_name = Path(Path(config.s3.data_key).stem).stem
+    sub_dir_name = None
+    if config.s3 and config.s3.data_key:
+        sub_dir_name = Path(Path(config.s3.data_key).stem).stem
+    else:
+        # Fallback to a generic subdir name
+        sub_dir_name = 'artifacts'
     return {
         'dataset': Artifact(
             name='dataset',
-            remote_path=config.s3.data_key,
+            remote_path=(config.s3.data_key if config.s3 else ''),
             local_path=config.paths.dataset_path
             / sub_dir_name
             / config.paths.metadata_file,
@@ -108,7 +113,9 @@ def get_default_artifacts(config: AppConfig) -> Dict[str, Artifact]:
         ),
         'yourtts_checkpoint': Artifact(
             name='yourtts_checkpoint',
-            remote_path=config.s3.cml_tts_checkpoint_key,
+            remote_path=(
+                config.s3.cml_tts_checkpoint_key if config.s3 else ''
+            ),
             local_path=config.paths.restore_path,
             extract=True,
             extract_to=config.paths.pretrained_checkpoint_dir,

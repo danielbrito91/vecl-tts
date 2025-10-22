@@ -13,6 +13,9 @@ class PathsConfig(BaseModel):
     dataset_path: Path = Field(
         ..., description='Path to the root of the dataset.'
     )
+    subdir_name: str = Field(
+        ..., description='Name of the subdirectory in the dataset path.'
+    )
     metadata_file: str = Field(
         ..., description='Name of the main metadata file.'
     )
@@ -167,8 +170,8 @@ class ModelConfig(BaseModel):
         ..., description="Type of model to train ('vecl' or 'yourtts')."
     )
     ser_model_name: str = Field(
-        'alefiury/wav2vec2-xls-r-300m-pt-br-spontaneous-speech-emotion-recognition',
-        description='Name of the Speech Emotion Recognition model from Hugging Face.',
+        'speechbrain/emotion-recognition-wav2vec2-IEMOCAP',
+        description='Name of the Speech Emotion Recognition model.',
     )
     use_emotion_consistency_loss: bool = Field(
         False,
@@ -183,7 +186,7 @@ class DownloadConfig(BaseModel):
         ['all'],
         description='Which artifacts to download',
     )
-    backend: str = Field('s3', description='Storage backend')
+    backend: str = Field('local', description='Storage backend (local or s3)')
     s3_bucket: Optional[str] = Field(
         None,
         description='S3 bucket name (uses S3_BUCKET_NAME env var if not provided)',

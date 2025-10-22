@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import torch
 
 from vecl.embeddings.emotion import (
-    EmotionEmbedding,
+    HFEmotionEmbedding,
     compute_emotion_embeddings,
 )
 
@@ -17,10 +17,10 @@ DUMMY_SER_MODEL_NAME = 'dummy/ser-model'
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
 @patch('vecl.embeddings.emotion.torch.cuda.is_available')
-def test_emotion_embedding_init_cuda(
+def test_hf_emotion_embedding_init_cuda(
     mock_cuda, mock_feature_extractor, mock_model
 ):
-    """Test EmotionEmbedding initialization with CUDA available."""
+    """Test HFEmotionEmbedding initialization with CUDA available."""
     mock_cuda.return_value = True
     mock_feature_extractor_instance = MagicMock()
     mock_model_instance = MagicMock()
@@ -29,7 +29,7 @@ def test_emotion_embedding_init_cuda(
     mock_model.return_value = mock_model_instance
 
     # Initialize EmotionEmbedding
-    emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
+    emotion_embedding = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
 
     # Verify models were loaded
     mock_feature_extractor.assert_called_once_with(DUMMY_SER_MODEL_NAME)
@@ -47,10 +47,10 @@ def test_emotion_embedding_init_cuda(
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
 @patch('vecl.embeddings.emotion.torch.cuda.is_available')
-def test_emotion_embedding_init_cpu(
+def test_hf_emotion_embedding_init_cpu(
     mock_cuda, mock_feature_extractor, mock_model
 ):
-    """Test EmotionEmbedding initialization without CUDA."""
+    """Test HFEmotionEmbedding initialization without CUDA."""
     mock_cuda.return_value = False
     mock_feature_extractor_instance = MagicMock()
     mock_model_instance = MagicMock()
@@ -59,7 +59,7 @@ def test_emotion_embedding_init_cpu(
     mock_model.return_value = mock_model_instance
 
     # Initialize EmotionEmbedding
-    emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
+    emotion_embedding = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
 
     # Verify device is set to CPU
     assert emotion_embedding.device.type == 'cpu'
@@ -70,14 +70,14 @@ def test_emotion_embedding_init_cpu(
     'vecl.embeddings.emotion.AutoModelForAudioClassification.from_pretrained'
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
-def test_get_emotion_embedding_basic(
+def test_hf_get_emotion_embedding_basic(
     mock_feature_extractor,
     mock_model,
     mock_audio_load,
     mock_audio_tensor,
     mock_model_outputs,
 ):
-    """Test basic emotion embedding extraction."""
+    """Test basic HFEmotionEmbedding extraction."""
     # Setup mocks
     mock_feature_extractor_instance = MagicMock()
     mock_model_instance = MagicMock()
@@ -97,7 +97,7 @@ def test_get_emotion_embedding_basic(
     mock_model_instance.return_value = mock_model_outputs
 
     # Initialize and test
-    emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
+    emotion_embedding = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     result = emotion_embedding.get_emotion_embedding('/fake/path/audio.wav')
 
     # Verify result shape and type
@@ -110,10 +110,10 @@ def test_get_emotion_embedding_basic(
     'vecl.embeddings.emotion.AutoModelForAudioClassification.from_pretrained'
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
-def test_get_emotion_embedding_resampling(
+def test_hf_get_emotion_embedding_resampling(
     mock_feature_extractor, mock_model, mock_audio_load, mock_model_outputs
 ):
-    """Test emotion embedding with audio resampling."""
+    """Test HFEmotionEmbedding with audio resampling."""
     # Setup mocks
     mock_feature_extractor_instance = MagicMock()
     mock_model_instance = MagicMock()
@@ -134,7 +134,7 @@ def test_get_emotion_embedding_resampling(
     mock_model_instance.return_value = mock_model_outputs
 
     # Test - should handle resampling internally
-    emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
+    emotion_embedding = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
 
     with patch(
         'vecl.embeddings.emotion.torchaudio.transforms.Resample'
@@ -157,10 +157,10 @@ def test_get_emotion_embedding_resampling(
     'vecl.embeddings.emotion.AutoModelForAudioClassification.from_pretrained'
 )
 @patch('vecl.embeddings.emotion.AutoFeatureExtractor.from_pretrained')
-def test_get_emotion_embedding_stereo_to_mono(
+def test_hf_get_emotion_embedding_stereo_to_mono(
     mock_feature_extractor, mock_model, mock_audio_load, mock_model_outputs
 ):
-    """Test emotion embedding with stereo audio conversion to mono."""
+    """Test HFEmotionEmbedding with stereo audio conversion to mono."""
     # Setup mocks
     mock_feature_extractor_instance = MagicMock()
     mock_model_instance = MagicMock()
@@ -180,27 +180,26 @@ def test_get_emotion_embedding_stereo_to_mono(
     mock_model_instance.return_value = mock_model_outputs
 
     # Test - should convert stereo to mono
-    emotion_embedding = EmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
+    emotion_embedding = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     result = emotion_embedding.get_emotion_embedding('/fake/path/audio.wav')
 
     assert isinstance(result, torch.Tensor)
     assert result.shape == (1, 1024)
 
 
-def test_compute_emotion_embeddings_existing_file(
+def test_hf_compute_emotion_embeddings_existing_file(
     temp_dataset_dir, mock_dataset_configs
 ):
-    """Test when emotion embeddings file already exists."""
+    """Test when HFEmotionEmbedding embeddings file already exists."""
     embeddings_file = temp_dataset_dir / 'emotion_embeddings.pth'
     embeddings_file.touch()  # Create empty file to simulate existing embeddings
 
     # Call function
+    emotion_embedder = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     result = compute_emotion_embeddings(
         dataset_configs=mock_dataset_configs,
         embeddings_file_path=embeddings_file,
-        ser_model_name=DUMMY_SER_MODEL_NAME,
-        s3_bucket='dummy-bucket',
-        s3_key='dummy-key',
+        emotion_embedder=emotion_embedder,
     )
 
     # Should return early without processing
@@ -211,7 +210,7 @@ def test_compute_emotion_embeddings_existing_file(
 @patch('vecl.embeddings.emotion.download_s3_file')
 @patch('vecl.embeddings.emotion.torch.save')
 @patch('vecl.embeddings.emotion.load_tts_samples')
-@patch('vecl.embeddings.emotion.EmotionEmbedding')
+@patch('vecl.embeddings.emotion.HFEmotionEmbedding')
 def test_compute_emotion_embeddings_success(
     mock_emotion_embedding_class,
     mock_load_samples,
@@ -221,7 +220,7 @@ def test_compute_emotion_embeddings_success(
     mock_dataset_configs,
     sample_tts_samples,
 ):
-    """Test successful emotion embeddings computation."""
+    """Test successful HFEmotionEmbedding computation."""
     embeddings_file = temp_dataset_dir / 'emotion_embeddings.pth'
 
     # Setup mocks
@@ -239,12 +238,11 @@ def test_compute_emotion_embeddings_success(
     )
 
     # Call function
+    emotion_embedder = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     compute_emotion_embeddings(
         dataset_configs=mock_dataset_configs,
         embeddings_file_path=embeddings_file,
-        ser_model_name=DUMMY_SER_MODEL_NAME,
-        s3_bucket='dummy-bucket',
-        s3_key='dummy-key',
+        emotion_embedder=emotion_embedder,
     )
 
     # Verify download was attempted
@@ -282,7 +280,7 @@ def test_compute_emotion_embeddings_success(
 @patch('vecl.embeddings.emotion.download_s3_file')
 @patch('vecl.embeddings.emotion.torch.save')
 @patch('vecl.embeddings.emotion.load_tts_samples')
-@patch('vecl.embeddings.emotion.EmotionEmbedding')
+@patch('vecl.embeddings.emotion.HFEmotionEmbedding')
 def test_compute_emotion_embeddings_with_errors(
     mock_emotion_embedding_class,
     mock_load_samples,
@@ -292,7 +290,7 @@ def test_compute_emotion_embeddings_with_errors(
     mock_dataset_configs,
     sample_tts_samples,
 ):
-    """Test emotion embeddings computation with some failures."""
+    """Test HFEmotionEmbedding computation with some failures."""
     embeddings_file = temp_dataset_dir / 'emotion_embeddings.pth'
 
     mock_load_samples.return_value = (sample_tts_samples, None)
@@ -311,12 +309,11 @@ def test_compute_emotion_embeddings_with_errors(
     )
 
     # Call function (should not raise exception)
+    emotion_embedder = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     compute_emotion_embeddings(
         dataset_configs=mock_dataset_configs,
         embeddings_file_path=embeddings_file,
-        ser_model_name=DUMMY_SER_MODEL_NAME,
-        s3_bucket='dummy-bucket',
-        s3_key='dummy-key',
+        emotion_embedder=emotion_embedder,
     )
 
     # Verify torch.save was still called
@@ -334,14 +331,14 @@ def test_compute_emotion_embeddings_with_errors(
 def test_compute_emotion_embeddings_empty_samples(
     temp_dataset_dir, mock_dataset_configs
 ):
-    """Test emotion embeddings computation with no samples."""
+    """Test HFEmotionEmbedding computation with no samples."""
     embeddings_file = temp_dataset_dir / 'emotion_embeddings.pth'
 
     with (
         patch('vecl.embeddings.emotion.download_s3_file'),
         patch('vecl.embeddings.emotion.load_tts_samples') as mock_load_samples,
         patch(
-            'vecl.embeddings.emotion.EmotionEmbedding'
+            'vecl.embeddings.emotion.HFEmotionEmbedding'
         ) as mock_emotion_embedding_class,
         patch('vecl.embeddings.emotion.torch.save') as mock_torch_save,
     ):
@@ -349,12 +346,13 @@ def test_compute_emotion_embeddings_empty_samples(
         mock_emotion_embedding_class.return_value = MagicMock()
 
         # Call function
+        emotion_embedder = HFEmotionEmbedding(
+            ser_model_name=DUMMY_SER_MODEL_NAME
+        )
         compute_emotion_embeddings(
             dataset_configs=mock_dataset_configs,
             embeddings_file_path=embeddings_file,
-            ser_model_name=DUMMY_SER_MODEL_NAME,
-            s3_bucket='dummy-bucket',
-            s3_key='dummy-key',
+            emotion_embedder=emotion_embedder,
         )
 
         # Should still save (empty) embeddings
@@ -368,7 +366,7 @@ def test_compute_emotion_embeddings_empty_samples(
 @patch('vecl.embeddings.emotion.os.path.relpath', side_effect=os.path.relpath)
 @patch('vecl.embeddings.emotion.torch.save')
 @patch('vecl.embeddings.emotion.load_tts_samples')
-@patch('vecl.embeddings.emotion.EmotionEmbedding')
+@patch('vecl.embeddings.emotion.HFEmotionEmbedding')
 def test_relative_path_computation(
     mock_emotion_embedding_class,
     mock_load_samples,
@@ -390,12 +388,11 @@ def test_relative_path_computation(
     )
 
     # Call function
+    emotion_embedder = HFEmotionEmbedding(ser_model_name=DUMMY_SER_MODEL_NAME)
     compute_emotion_embeddings(
         dataset_configs=mock_dataset_configs,
         embeddings_file_path=embeddings_file,
-        ser_model_name=DUMMY_SER_MODEL_NAME,
-        s3_bucket='dummy-bucket',
-        s3_key='dummy-key',
+        emotion_embedder=emotion_embedder,
     )
 
     # Verify relative path was computed for each sample

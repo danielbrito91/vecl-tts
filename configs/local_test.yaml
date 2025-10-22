@@ -3,6 +3,7 @@ defaults:
   - paths: local # Use the local paths configuration
   - audio: default
   - model: yourtts
+  - download: default
   - _self_
 
 
