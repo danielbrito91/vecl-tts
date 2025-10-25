@@ -41,6 +41,12 @@ class Vecl(Vits):
                 config.model_args.emotion_embedding_dim,
                 config.model_args.d_vector_dim,
             )
+        # New fusion layer to combine concatenated [d_vector, projected_emo]
+        # back to the original d_vector_dim expected by the model downstream.
+        self.emotion_fusion = nn.Linear(
+            config.model_args.d_vector_dim + config.model_args.d_vector_dim,
+            config.model_args.d_vector_dim,
+        )
 
     def _get_speaker_ids(self, batch: dict) -> torch.Tensor:
         """Get speaker IDs from batch."""
@@ -180,8 +186,14 @@ class Vecl(Vits):
             emotion_embeddings = emotion_embeddings.to(proj_device)
         if d_vectors.device != proj_device:
             d_vectors = d_vectors.to(proj_device)
-        projected_emo = self.emotion_proj(emotion_embeddings)
-        d_vectors = torch.nn.functional.normalize(d_vectors + projected_emo)
+        projected_emo = (
+            self.emotion_proj(emotion_embeddings)
+            if self.emotion_proj is not None
+            else emotion_embeddings
+        )
+        # Concatenate speaker and emotion, then fuse back to d_vector_dim
+        fused = torch.cat([d_vectors, projected_emo], dim=-1)
+        d_vectors = torch.nn.functional.normalize(self.emotion_fusion(fused))
         return d_vectors
 
     def format_batch(self, batch: dict) -> dict:

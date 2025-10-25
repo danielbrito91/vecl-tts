@@ -64,6 +64,16 @@ class ModelLoader(ABC):
         model_config.save_step = self.config.training.save_step
         model_config.max_text_len = self.config.training.max_text_len
 
+        # Configure dashboard logger (wandb or tensorboard)
+        if self.config.wandb:
+            # Enable W&B in Coqui trainer config
+            model_config.dashboard_logger = 'wandb'
+            model_config.project_name = self.config.wandb.project_name
+            # run_name already set above
+            model_config.logger_uri = self.config.wandb.entity
+        else:
+            model_config.dashboard_logger = 'tensorboard'
+
         # Audio settings
         model_config.audio.sample_rate = self.config.audio.sample_rate
         model_config.audio.max_audio_len = int(
@@ -178,6 +188,13 @@ class ModelLoader(ABC):
             w_shape = state_dict['emotion_proj.proj.weight'].shape
             model.emotion_proj = EmotionProj(w_shape[1], w_shape[0])
 
+        # Handle new fusion layer missing in older checkpoints
+        if 'emotion_fusion.weight' not in state_dict and hasattr(
+            model, 'emotion_fusion'
+        ):
+            # Nothing to load; keep randomly initialized fusion layer
+            pass
+
         state_dict = patch_state_dict(state_dict)
         model.load_state_dict(state_dict, strict=False)
 
@@ -221,7 +238,7 @@ class VeclLoader(ModelLoader):
 
         # Ensure model_args has the VECL fields
         if not hasattr(model_config.model_args, 'emotion_embedding_dim'):
-            model_config.model_args.emotion_embedding_dim = 1024
+            model_config.model_args.emotion_embedding_dim = 768
         if not hasattr(
             model_config.model_args, 'use_emotion_consistency_loss'
         ):
@@ -231,6 +248,12 @@ class VeclLoader(ModelLoader):
         if not hasattr(model_config.model_args, 'emotion_embedding_file'):
             model_config.model_args.emotion_embedding_file = str(
                 self.config.paths.emotion_embeddings_file
+            )
+
+        # Ensure SER model name is propagated so loss and embedding code align
+        if not hasattr(model_config.model_args, 'ser_model_name'):
+            model_config.model_args.ser_model_name = (
+                self.config.model.ser_model_name
             )
 
         return model_config
@@ -246,7 +269,7 @@ class VeclLoader(ModelLoader):
 
         # Ensure emotion_embedding_dim exists
         if not hasattr(model_config.model_args, 'emotion_embedding_dim'):
-            model_config.model_args.emotion_embedding_dim = 1024
+            model_config.model_args.emotion_embedding_dim = 768
 
         return Vecl.init_from_config(model_config)[0]
 

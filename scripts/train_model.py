@@ -130,6 +130,16 @@ def main(cfg: DictConfig):
     logger.info(f'Training {config.model.type} model')
     logger.info(f'Output: {config.paths.output_path}')
 
+    # Authenticate Weights & Biases if configured
+    if config.wandb:
+        try:
+            import wandb
+
+            wandb.login()
+            logger.info('Authenticated with Weights & Biases.')
+        except Exception as e:
+            logger.warning(f'W&B login failed: {e}')
+
     # Step 1: Ensure artifacts exist
     # ensure_artifacts(config)
 

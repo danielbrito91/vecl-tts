@@ -28,7 +28,7 @@ class VeclArgs(VitsArgs):
     freeze_encoder: bool = True
     use_d_vector_file: bool = True
     emotion_embedding_file: str = None
-    emotion_embedding_dim: int = 1024
+    emotion_embedding_dim: int = 768
     d_vector_dim: int = 512
     use_emotion_consistency_loss: bool = True
     emotion_consistency_loss_alpha: float = 9.0

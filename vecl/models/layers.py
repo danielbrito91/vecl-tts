@@ -12,7 +12,7 @@ class EmotionProj(nn.Module):
     to the model's expected dimension (e.g., 512-dim).
     """
 
-    def __init__(self, input_dim=1024, output_dim=512):
+    def __init__(self, input_dim=768, output_dim=512):
         super().__init__()
         self.proj = nn.Linear(input_dim, output_dim)
         print(f'Initialized projection layer: {input_dim} -> {output_dim}')

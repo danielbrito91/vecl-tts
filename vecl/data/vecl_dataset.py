@@ -1,7 +1,51 @@
 import os
 
 import torch
-from TTS.tts.models.vits import VitsDataset, load_audio
+import torchaudio
+from torchaudio.functional import resample as ta_resample
+from TTS.tts.models.vits import VitsDataset
+
+
+def safe_load_audio(file_path: str, target_sample_rate: int | None = None) -> tuple[torch.Tensor, int]:
+    """Load audio and ensure waveform is in [-1, 1] with shape [1, T].
+
+    This bypasses the strict assertion in Coqui-TTS' `load_audio` by
+    normalizing/clamping potentially non-normalized PCM files.
+    """
+    waveform, sample_rate = torchaudio.load(file_path)  # [C, T], dtype may vary
+
+    # Mixdown to mono
+    if waveform.dim() == 2 and waveform.size(0) > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+
+    # Convert to float
+    waveform = waveform.float()
+
+    # If it looks like raw int16 range, scale to [-1, 1]
+    max_abs = waveform.abs().max()
+    if max_abs > 1.0:
+        # Heuristic: values >> 1 imply integer PCM scale
+        if max_abs > 256:
+            waveform = waveform / 32768.0
+        else:
+            waveform = waveform / max_abs
+
+    # Final clamp to be safe
+    waveform = torch.clamp(waveform, -1.0, 1.0)
+
+    # Ensure [1, T]
+    if waveform.dim() == 1:
+        waveform = waveform.unsqueeze(0)
+
+    # Optional resample to target sample rate
+    if target_sample_rate is not None and sample_rate != target_sample_rate:
+        # torchaudio resample expects [C, T]
+        waveform = ta_resample(
+            waveform, orig_freq=sample_rate, new_freq=target_sample_rate
+        )
+        sample_rate = target_sample_rate
+
+    return waveform, sample_rate
 
 
 class VeclDataset(VitsDataset):
@@ -20,7 +64,10 @@ class VeclDataset(VitsDataset):
 
     def __getitem__(self, idx):
         item = self.samples[idx]
-        wav, _ = load_audio(item['audio_file'])
+        target_sr = None
+        if hasattr(self, 'config') and hasattr(self.config, 'audio'):
+            target_sr = getattr(self.config.audio, 'sample_rate', None)
+        wav, _ = safe_load_audio(item['audio_file'], target_sample_rate=target_sr)
 
         if (
             self.model_args.encoder_sample_rate
