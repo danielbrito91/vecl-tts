@@ -67,6 +67,9 @@ class VeclConfig(VitsConfig):
     max_text_len: int = 250
     max_audio_len: int = 22050 * 20
 
+    # Loss weights overrides / additions
+    speaker_encoder_loss_alpha: float = 9.0
+
     # Language management configuration
     use_language_weighted_sampler: bool = True
     language_weighted_sampler_alpha: float = 1.0
