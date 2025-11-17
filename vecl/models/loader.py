@@ -10,6 +10,7 @@ from TTS.tts.utils.languages import LanguageManager
 from vecl.config import AppConfig
 from vecl.models.layers import EmotionProj
 from vecl.models.vecl import Vecl
+from vecl.models.yourtts import YourTTS
 from vecl.training.utils import patch_state_dict
 
 logger = logging.getLogger(__name__)
@@ -284,14 +285,25 @@ class YourTTSLoader(ModelLoader):
     """Loader for YourTTS models."""
 
     def _patch_config_for_training(self, model_config):
-        # YourTTS doesn't need special config patches
+        # Ensure model_args.use_language_embedding is preserved
+        # This is critical for models trained with language embeddings
+        # to avoid channel dimension mismatches
+        if hasattr(model_config, 'model_args') and hasattr(model_config.model_args, 'use_language_embedding'):
+            # The model architecture uses language embeddings, so we must enable them
+            # even if the config level setting says otherwise
+            if model_config.model_args.use_language_embedding:
+                model_config.use_language_embedding = True
+        
         return model_config
 
     def _init_model(self, model_config):
-        return setup_model(model_config)
+        # Use our custom YourTTS class instead of setup_model
+        # which would instantiate the base VITS class
+        return YourTTS.init_from_config(model_config)
 
     def _init_model_for_inference(self, cfg):
-        return setup_model(cfg)
+        # Use our custom YourTTS class for inference too
+        return YourTTS.init_from_config(cfg)
 
     def _get_inference_checkpoint_path(self) -> Path:
         return self.config.paths.pretrained_checkpoint_dir / 'best_model.pth'

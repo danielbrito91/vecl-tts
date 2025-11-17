@@ -6,13 +6,17 @@ from torchaudio.functional import resample as ta_resample
 from TTS.tts.models.vits import VitsDataset
 
 
-def safe_load_audio(file_path: str, target_sample_rate: int | None = None) -> tuple[torch.Tensor, int]:
+def safe_load_audio(
+    file_path: str, target_sample_rate: int | None = None
+) -> tuple[torch.Tensor, int]:
     """Load audio and ensure waveform is in [-1, 1] with shape [1, T].
 
     This bypasses the strict assertion in Coqui-TTS' `load_audio` by
     normalizing/clamping potentially non-normalized PCM files.
     """
-    waveform, sample_rate = torchaudio.load(file_path)  # [C, T], dtype may vary
+    waveform, sample_rate = torchaudio.load(
+        file_path
+    )  # [C, T], dtype may vary
 
     # Mixdown to mono
     if waveform.dim() == 2 and waveform.size(0) > 1:
@@ -67,7 +71,9 @@ class VeclDataset(VitsDataset):
         target_sr = None
         if hasattr(self, 'config') and hasattr(self.config, 'audio'):
             target_sr = getattr(self.config.audio, 'sample_rate', None)
-        wav, _ = safe_load_audio(item['audio_file'], target_sample_rate=target_sr)
+        wav, _ = safe_load_audio(
+            item['audio_file'], target_sample_rate=target_sr
+        )
 
         if (
             self.model_args.encoder_sample_rate
