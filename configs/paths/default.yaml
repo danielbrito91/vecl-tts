@@ -1,0 +1,12 @@
+output_path: ${oc.env:OUTPUT_PATH}
+dataset_path: ${oc.env:DATASET_PATH}
+subdir_name: processed
+metadata_file: metadata.csv
+speaker_embeddings_file: ${paths.dataset_path}/speakers.pth
+emotion_embeddings_file: ${paths.dataset_path}/emotions.pth
+speaker_encoder_model_dir: ${paths.output_path}/speaker_encoder
+pretrained_checkpoint_dir: ${oc.env:PRETRAINED_CHECKPOINT_DIR}
+restore_path: ${paths.pretrained_checkpoint_dir}/best_model.pth
+pretrained_config_path: ${paths.pretrained_checkpoint_dir}/config.json
+local_tar_path: artifacts/checkpoints_yourtts_cml_tts_dataset.tar.bz
+language_ids_file: ${paths.pretrained_checkpoint_dir}/language_ids.json 

@@ -1,0 +1,42 @@
+# A complete configuration for a minimal, local-only test run.
+defaults:
+  - paths: local # Use the local paths configuration
+  - audio: default
+  - model: yourtts
+  - download: default
+  - _self_
+
+
+# Disable W&B and S3 by setting them to null
+wandb: null
+s3: null
+
+# --- Training Overrides ---
+# All training parameters are defined directly here for clarity.
+training:
+  batch_size: 2
+  eval_batch_size: 2
+  num_loader_workers: 0
+  epochs: 1
+  learning_rate: 0.0001
+  save_step: 1
+  max_text_len: 250
+  skip_train_epoch: false
+  use_speaker_weighted_sampler: true
+  use_language_weighted_sampler: true
+  min_audio_len: 22050
+  max_audio_len: 220500 # 10 seconds
+  text_cleaners:
+    - "portuguese_cleaners"
+  use_phonemes: false
+  use_precomputed_embeddings: true
+  use_speaker_embedding: true
+  use_emotion_embedding: true
+  use_d_vector_file: true
+  d_vector_file: null
+  use_multi_lingual: true
+  use_pretrained_lang_embeddings: true
+  use_language_embedding: true
+  eval_split_max_size: 4
+  eval_split_size: 0.5
+  run_name: "local_test_${now:%Y-%m-%d_%H-%M-%S}" 

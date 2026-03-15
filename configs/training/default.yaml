@@ -1,0 +1,24 @@
+batch_size: 12
+eval_batch_size: 6
+num_loader_workers: 8
+epochs: 500
+learning_rate: 1e-5
+save_step: 5000
+max_text_len: 200
+skip_train_epoch: false
+use_speaker_weighted_sampler: true
+use_language_weighted_sampler: false
+min_audio_len: 1
+max_audio_len: 360000
+text_cleaners: ["portuguese_cleaners"]
+use_phonemes: false
+use_precomputed_embeddings: true
+use_speaker_embedding: true
+use_emotion_embedding: true
+use_d_vector_file: true
+d_vector_file: null  # Will be set automatically from paths.speaker_embeddings_file
+use_multi_lingual: true
+use_pretrained_lang_embeddings: true
+run_name: "${model.type}_${now:%Y-%m-%d_%H-%M-%S}"
+eval_split_max_size: 256
+eval_split_size: 0.1 

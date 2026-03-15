@@ -1,0 +1,7 @@
+bucket_name: ${oc.env:S3_BUCKET_NAME}
+data_key: "tts/cml-tts/processed_24k.tar.gz"
+checkpoint_prefix_yourtts: "tts/yourtts/yourtts-multilingual-checkpoints-finetuned"
+checkpoint_prefix_vecl: "tts/vecl/vecl-multilingual-checkpoints-finetuned"
+cml_tts_checkpoint_key: "tts/cml-tts/checkpoints_yourtts_cml_tts_dataset.tar.bz"
+speaker_embeddings_key: "tts/yourtts/embeddings/speaker_embeddings_patch.pth"
+emotion_embeddings_key: "tts/vecl-tts/embeddings/emotion_embeddings.pth"

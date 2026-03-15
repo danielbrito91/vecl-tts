@@ -1,0 +1,76 @@
+[project]
+name = "vecl-pt"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "altair>=5.5.0",
+    "boto3>=1.38.32",
+    "coqui-tts>=0.24.3",
+    "ffmpeg-normalize>=1.32.3",
+    "hydra-core>=1.3.2",
+    "librosa>=0.11.0",
+    "matplotlib>=3.9.4",
+    "numpy>=1.26.4",
+    "pandas>=2.2.3",
+    "python-dotenv>=1.1.1",
+    "scipy>=1.13.1",
+    "seaborn>=0.13.2",
+    "silero-vad>=5.1.2",
+    "speechbrain>=1.0.3",
+    "tqdm>=4.66.4",
+    "vl-convert-python>=1.8.0",
+    "wandb>=0.20.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "ipykernel>=6.29.5",
+    "pytest-cov>=6.2.1",
+    "pytest>=8.4.1",
+    "ruff>=0.11.13",
+    "taskipy>=1.14.1",
+]
+
+[tool.ruff]
+line-length = 79
+extend-exclude = ['notebooks']
+
+[tool.ruff.lint]
+preview = true
+select = ['I', 'F', 'E', 'W', 'PT', 'PD']
+ignore = ['E501']
+
+[tool.ruff.format]
+preview = true
+quote-style = 'single'
+
+[tool.taskipy.tasks]
+pre_test = 'task lint'
+test = 'pytest --cov=vecl --cov=scripts -vv'
+post_test = 'coverage html'
+lint = 'ruff check . && ruff check . --diff'
+format = 'ruff check . --fix && ruff format .'
+
+# Download tasks
+download = 'uv run -m scripts.download'
+download-all = "uv run -m scripts.download download.artifacts='[\"all\"]'"
+download-dataset = "uv run -m scripts.download download.artifacts='[\"dataset\"]'"
+download-models = "uv run -m scripts.download download.artifacts='[\"models\"]'"
+download-embeddings = "uv run -m scripts.download download.artifacts='[\"embeddings\"]'"
+
+
+# Training tasks
+train = 'uv run -m scripts.train_model'
+train-vecl = 'task train model=vecl'
+train-yourtts = 'task train model=yourtts'
+train-local = 'task train --config-name local_test'
+
+# Utility tasks
+clean = 'rm -rf outputs/ __pycache__ .pytest_cache .coverage'
+clean-cache = 'rm -rf ~/.vecl_cache/'
+setup = 'uv sync && mkdir -p data/processed_24k models outputs'
+
+[tool.pytest.ini_options]
+pythonpath = ['.']
